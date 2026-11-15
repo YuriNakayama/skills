@@ -1,9 +1,9 @@
 ---
-name: skill-sync
-description: Keep the skills hub (~/project/98_skills) and each repo's .claude/skills in sync — distribute hub changes to repos and import skills that were edited or created inside a repo back into the hub, keeping each skill's shared/own classification. Use when the user says "スキルを配布して", "スキルをリポジトリに配って", "スキルを取り込んで", "リポジトリで直したスキルをハブに戻して", "ハブと同期", "sync skills", after editing a skill in the hub, or after a skill under some repo's .claude/skills was edited or created directly. Does NOT change whether a skill is shared across repos or repo-specific, does not merge variants, and does not rewrite skill contents for portability — hand those to the skill-share skill.
+name: skill-transfer
+description: Move skills between the skills hub (~/project/98_skills) and each repo's .claude/skills (any worktree or branch) — export (distribute) hub changes to repos with `uv run src/hub.py export`, check differences with `diff`, and import skills that were edited or created inside a repo back into the hub, keeping each skill's shared/own classification. Use when the user says "スキルを配布して", "スキルをリポジトリに配って", "スキルを取り込んで", "リポジトリで直したスキルをハブに戻して", "ハブと同期", "sync skills", after editing a skill in the hub, or after a skill under some repo's .claude/skills was edited or created directly. Does NOT change whether a skill is shared across repos or repo-specific, does not merge variants, and does not rewrite skill contents for portability — hand those to the skill-share skill.
 ---
 
-# skill-sync: ハブとリポジトリの同期
+# skill-transfer: ハブとリポジトリの間の配布（export）と取り込み（import）
 
 ハブ `~/project/98_skills` がスキルの正本で、各リポジトリの `.claude/skills` はそのコピー。
 このスキルは「どちらが新しいか」を判定して運ぶだけで、スキルの中身や分類については判断しない。
@@ -24,7 +24,7 @@ description: Keep the skills hub (~/project/98_skills) and each repo's .claude/s
 
 - 設定は `skills/repos.json`。`path` はファイルの場所（`skills/`）からではなく、ハブのルートからの相対パス（`~` は使えない）。
 - 各リポジトリの `.claude/skills/.hub-manifest` に前回配布時の各スキルのハッシュがあり、ハブ・リポジトリ・ハッシュの 3 者比較で状態を決める。
-- `src/sync.py` は `repos.json` から外したスキルを配布先から消さない。
+- `src/transfer.py` は `repos.json` から外したスキルを配布先から消さない。
 - `~/.claude/skills/synced` と `learned` は Claude アプリの管理なので触らない。
 
 ## 手順
@@ -33,13 +33,13 @@ description: Keep the skills hub (~/project/98_skills) and each repo's .claude/s
 
 ```bash
 cd ~/project/98_skills
-uv run src/hub.py sync --check          # 1 リポジトリだけなら --repo <repo>
+uv run src/hub.py diff          # 1 リポジトリだけなら --repo <repo>
 uv run src/hub.py check-paths
 ```
 
-`--check` は差のあるスキルだけを表示する（表示されないスキルは `same`）。
+`diff` は差のあるスキルだけを表示する（表示されないスキルは `same`）。
 
-`uv run src/hub.py check-paths` と `uv run src/hub.py check-duplicates` のどちらかが exit 1 なら配布しない（`sync` も配布の前に自分で 2 つを実行し、失敗したら配布しない）。終了コードは出力の最後の行ではなく、コマンドの終了コードそのもので確かめる。
+`uv run src/hub.py check-paths` と `uv run src/hub.py check-duplicates` のどちらかが exit 1 なら配布しない（`export` も配布の前に自分で 2 つを実行し、失敗したら配布しない）。終了コードは出力の最後の行ではなく、コマンドの終了コードそのもので確かめる。
 - `repos` / `symlink` / `link` の行: 指摘どおり直す（`repos.json`、切れたリンクなど）。直し方が分類の変更になるなら skill-share に渡す。
 - `abs` の行（配布するスキルに絶対パスがある）: skill-share の `references/portability.md` に沿って直す必要がある。ユーザーに伝えて skill-share に渡す。
 - `check-duplicates` の行（同名の別内容、層をまたいだ同名など）: 統合するか別の名前に分ける必要がある。skill-share に渡す。
@@ -63,6 +63,16 @@ exit 2 はチェック自体の失敗（jq が無い、一時ディレクトリ�
 ```bash
 uv run src/hub.py import <repo> <name>     # shared のスキルは skills/shared/ へ、own のスキルは skills/repos/<repo>/ へ
 ```
+
+取り込み元は、省くと登録した場所の作業ツリー。worktree やブランチで開発したスキルは、次のどれかで取り込む:
+
+| 場所 | オプション |
+|---|---|
+| 今いる worktree・作業ツリー | `--here`（`uv run --project ~/project/98_skills ~/project/98_skills/src/hub.py import <repo> <name> --here`） |
+| ほかの作業ツリー | `--path <作業ツリー>`（pre-commit やフックの知らせにはこの形で出る） |
+| マージ済みのブランチ、checkout していないブランチ | `--ref <branch>`（コミットされた中身を読む。git が無視するファイルは入らない） |
+
+取り込んだら `uv run src/hub.py export --repo <repo>` で、そのリポジトリの worktree すべてに配る。
 
 shared のスキルを取り込むと、それを使う全リポジトリに次回配布される。取り込む前に影響するリポジトリを示す:
 
@@ -98,9 +108,9 @@ git log --oneline -- 'skills/shared/<name>/*' 'skills/repos/*/<name>/*' 'shared/
 
 ```bash
 uv run src/hub.py check-paths
-uv run src/hub.py sync                         # または --repo <repo>
-uv run src/hub.py sync --repo <repo> --force   # both / unknown でハブ版を残すと決めたリポジトリだけ
-uv run src/hub.py sync --check                 # drift: 0 を確認
+uv run src/hub.py export                         # または --repo <repo>
+uv run src/hub.py export --repo <repo> --force   # both / unknown でハブ版を残すと決めたリポジトリだけ
+uv run src/hub.py diff                 # drift: 0 を確認
 ```
 
 drift が残るのが、ユーザーが残すと決めた `unmanaged`（配布をやめたスキルのコピーなど）だけなら、それを報告して終える。
@@ -110,13 +120,14 @@ drift が残るのが、ユーザーが残すと決めた `unmanaged`（配布�
 - 配布・取り込みしたスキルと、各リポジトリの `git -C <repo> status --short -- .claude/skills`。
 - `.hub-manifest` が未追跡なら、そのリポジトリでコミットするか決めてもらう。
 - git 管理外のリポジトリ（`.git` が無いもの）は差分で確認・復元できないことを伝える。
-- `.gitignore` で除外されている配布物（`*-workspace/` など）は git に出ないことを伝える。
+- `.gitignore` で除外されている配布物は git に出ないことを伝える（`*-workspace/` は配布しない）。
 
 コミットは、ハブも各リポジトリもユーザーに言われたときだけする。
 
 ## リポジトリを管理下に入れる・コミットが止められた
 
 - 新しいリポジトリにスキルを配りたい（`skills/repos.json` に無い）と言われたら、skill-register に渡す。
+- pre-commit が止めるのは既定のブランチ（main など）でだけ。ほかのブランチでは知らせるだけなので、そのまま開発を続け、マージの前に `--here` か、マージの後に `--ref main` で取り込む。
 - 登録済みのリポジトリで `.claude/skills` のコミットが pre-commit に止められたと言われたら、または Claude Code のフックから
   「skills hub: このリポジトリの .claude/skills に、ハブへ取り込まれていない変更がある」と伝えられたら、手順 1 から処理する
   （`uv run src/hub.py check-repo <名前> --path <作業ツリー>` で同じ一覧が出る）。

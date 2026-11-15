@@ -75,7 +75,7 @@ AWS プロファイル、S3 バケット、プロジェクト名、ディレク�
 
 ## 例外
 
-- `*-workspace/` スキル（eval の記録: `iteration-*/` の出力や `benchmark.json`）は過去の実行結果なので書き換えなくてよく、`uv run src/hub.py check-paths` も対象外にしている。ただし workspace に置いた実行用スクリプト（`grade.py` など）も検査されないので、書くときはこのルールに従う。
+- `*-workspace/`（skill-creator の評価の記録: `iteration-*/` の出力や `benchmark.json`）はスキルではなく、配布しないので、`uv run src/hub.py check-paths` も配布物として検査しない。過去の実行結果なので書き換えなくてよい。
 - 例示用の書き方（`<branch>`、`...`、`{repo}`、`$VAR`、`*`）は、配布物以外（`skills/global/` など）では存在チェックの対象外（例示の手前のディレクトリまでは確かめる）。
 
 ## 検査
@@ -84,4 +84,4 @@ AWS プロファイル、S3 バケット、プロジェクト名、ディレク�
 cd ~/project/98_skills && uv run src/hub.py check-paths
 ```
 
-`abs` の行がこのルール違反。例外（許可リスト）は無いので、直すまでそのスキルは配布できない（`sync` は検査が失敗すると配布しない）。
+`abs` の行がこのルール違反。例外（許可リスト）は無い。違反が 1 つでもあれば `export` は何も配布しない（`export --repo X` では、X に配布するスキルに違反があるときだけ止まる）。git が無視するファイルも配布されるので検査の対象。

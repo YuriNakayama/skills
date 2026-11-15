@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 
-from common import CONFIG, HUB, USER_SKILLS, repo_dir
+from common import CONFIG, HUB, NOT_SKILL, SKILLS, USER_SKILLS, files as skill_files, repo_dir, subdirs
 
 DOC = """ハブ内の切れたパスと、配布できない絶対パスを検出する。
 
@@ -24,16 +24,23 @@ DOC = """ハブ内の切れたパスと、配布できない絶対パスを検�
               /Users/<name>・/home/<name>/ で始まるパスは、存在しても不可。
               書き方は skills/global/skill-share/references/portability.md。
               例示（<branch> など）が続いても、手前が具体的な絶対パスなので不可。
-              例外（許可リスト）は無い。直すまでそのスキルは配布できない。
+              例外（許可リスト）は無い。直すまで export は配布しない（下の「export の前の検査」）。
+              git が無視するファイルも、配布されるので検査する。
             - それ以外（skills/global/、src/、README など）: プロジェクト置き場のパスが存在するか。
               無くても、それを含む git リポジトリ（ハブ以外）があれば、実行時に作られるパス（.dvc/cache、data/ など）とみなして通す。
             - 配布物以外では、例示（<...>、...、{...}、$VAR、* を含むもの）は例示の手前のディレクトリまでを確かめる。
               パス末尾の * は Markdown の強調とみなして外す（~/project/x* は ~/project/x として確かめる）。
-            - *-workspace/ スキル（eval 記録）は対象外。
+            - *-workspace/（skill-creator の評価の記録）はスキルではなく配布もしないので、配布物としては検査しない。
             - 検出しないもの: ../<別のリポジトリ> のような相対パスでの外部参照、/home/<name>（末尾の / が無いもの）、
               英数字に続く絶対パス（foo/Users/... は別の語とみなす。-I/Users/... のような短いオプションは検出する）。
             - /home/<name>/ の形は Web のパスなども拾う。${VAR}/home/... と $(cmd)/home/... は拾わない。
               <repo>/home/x/ のような例示の直後は、HTML タグ（<code>/Users/...）と見分けられないので拾う。
+
+export の前の検査（export が自動で実行する。check-paths 単体では全部をエラーにする）:
+  止める    配布するスキルの絶対パス（export --repo X では、X に配布するスキルのものだけ）と、
+            repos.json とハブの中身の食い違い（path の存在を除く）
+  警告だけ  それ以外（登録したリポジトリが無い、切れたシンボリックリンク、切れた Markdown のリンク、
+            配布物以外の絶対パス）。規則の違反ではなく、配布しても悪くならないので止めない
 """
 
 SELF = 'src/path_check.py'      # 自分自身は abs の検査から外す（例示や正規表現を含むため）
@@ -74,6 +81,19 @@ def tracked_files():
     return out
 
 
+def distributed_files():
+    """配布するスキルの全ファイル（export がコピーするのと同じ一覧。git が無視するものも含む）。"""
+    dirs = [os.path.join(SKILLS, 'shared', n) for n in subdirs(os.path.join(SKILLS, 'shared'))]
+    for r in subdirs(os.path.join(SKILLS, 'repos')):
+        dirs += [os.path.join(SKILLS, 'repos', r, n) for n in subdirs(os.path.join(SKILLS, 'repos', r))]
+    out = []
+    for d in dirs:
+        for p in skill_files(d).values():
+            if os.path.isfile(p) and not os.path.islink(p):
+                out.append(os.path.relpath(p, HUB))
+    return out
+
+
 def read_text(f):
     with open(os.path.join(HUB, f), 'rb') as fh:
         data = fh.read()
@@ -89,9 +109,9 @@ def check_repos(cfg, err):
         e = repos[repo]
         rpath = e.get('path', '')
         if rpath.startswith('~'):
-            err('repos', f'repos.json:{repo}', f'path に ~ は使えない（sync.py は展開しない）: {rpath}')
+            err('repos', f'repos.json:{repo}', f'path に ~ は使えない（transfer.py は展開しない）: {rpath}', fatal=False)
         elif not os.path.isdir(repo_dir(rpath)):
-            err('repos', f'repos.json:{repo}', f'path が存在しない: {rpath}')
+            err('repos', f'repos.json:{repo}', f'path が存在しない: {rpath}', fatal=False)
         for s in e.get('shared') or []:
             if not os.path.isdir(os.path.join(HUB, 'skills/shared', s)):
                 err('repos', f'repos.json:{repo}', f'skills/shared/{s} が存在しない')
@@ -117,7 +137,8 @@ def dirs_of(rel):
     d = os.path.join(HUB, rel)
     if not os.path.isdir(d):
         return []
-    return sorted(n for n in os.listdir(d) if not n.startswith('.') and os.path.isdir(os.path.join(d, n)))
+    return sorted(n for n in os.listdir(d) if not n.startswith('.') and not n.endswith(NOT_SKILL)
+                  and os.path.isdir(os.path.join(d, n)))
 
 
 # ---------- symlink ----------
@@ -140,7 +161,7 @@ def check_symlinks(cfg, err):
                 if os.path.islink(p) and not os.path.exists(p):
                     broken.append(p)
         for p in sorted(broken):
-            err('symlink', p, f'リンク先が無い: {os.readlink(p)}')
+            err('symlink', p, f'リンク先が無い: {os.readlink(p)}', fatal=False)
 
 
 # ---------- link ----------
@@ -209,13 +230,14 @@ def check_links(files, err):
             else:
                 target = os.path.join(HUB, d, p)
             if not os.path.exists(target):
-                err('link', f'{f}:{n}', t)
+                err('link', f'{f}:{n}', t, fatal=False)
 
 
 # ---------- abs ----------
 
 def distributed(f):
-    """配布するスキル（skills/shared/<skill>/... と skills/repos/<repo>/<skill>/...）なら 0。*-workspace スキルは 2、それ以外は 1。"""
+    """配布するスキル（skills/shared/<skill>/... と skills/repos/<repo>/<skill>/...）なら 0。
+    *-workspace（評価の記録。配布しない）は 2、それ以外は 1。"""
     if f.startswith('skills/shared/'):
         rest = f[len('skills/shared/'):]
     elif f.startswith('skills/repos/') and '/' in f[len('skills/repos/'):]:
@@ -224,7 +246,7 @@ def distributed(f):
         return 1
     if '/' not in rest:         # ディレクトリ直下のファイルはスキルではない
         return 1
-    return 2 if rest.split('/', 1)[0].endswith('-workspace') else 0
+    return 2 if rest.split('/', 1)[0].endswith(NOT_SKILL) else 0
 
 
 def roots_of(projects):
@@ -311,7 +333,15 @@ def strip_dots(s):
     return re.sub(r'\.+$', '', s)
 
 
-def check_abs(files, err):
+def targets(f, cfg):
+    """配布するスキルのファイル f を配るリポジトリの名前の集合。"""
+    parts = f.split('/')
+    if parts[1] == 'shared':
+        return {r for r, e in cfg.get('repos', {}).items() if parts[2] in (e.get('shared') or [])}
+    return {parts[2]}
+
+
+def check_abs(files, err, cfg, scope):
     print('== absolute paths')
     projects = os.path.dirname(HUB)
     roots = roots_of(projects)
@@ -350,7 +380,8 @@ def check_abs(files, err):
                 if key in seen:
                     continue
                 seen.add(key)
-                err('abs', f'{f}:{n}', f'{p}（配布するスキルに絶対パスは書けない）')
+                err('abs', f'{f}:{n}', f'{p}（配布するスキルに絶対パスは書けない）',
+                    fatal=scope is None or scope in targets(f, cfg))
                 continue
             target = projects + rest
             if os.path.exists(target):
@@ -366,7 +397,7 @@ def check_abs(files, err):
             top = git_toplevel(anc)
             if top and top != HUB:
                 continue
-            err('abs', f'{f}:{n}', p)
+            err('abs', f'{f}:{n}', p, fatal=False)
 
 
 # ---------- entry ----------
@@ -378,26 +409,33 @@ def main(a):
     except (OSError, ValueError):
         print('skills/repos.json を JSON として読めない', file=sys.stderr)
         return 2
-    errors = 0
+    gate = getattr(a, 'gate', False)        # export の前の検査。規則の違反だけを止め、ほかは警告にする
+    scope = getattr(a, 'repo', None) if gate else None
+    errors = warnings = 0
 
-    def err(kind, loc, msg):
-        nonlocal errors
+    def err(kind, loc, msg, fatal=True):
+        nonlocal errors, warnings
+        if gate and not fatal:
+            print(f'  警告 {kind:<8} {loc}: {msg}')
+            warnings += 1
+            return
         print(f'  {kind:<8} {loc}: {msg}')
         errors += 1
 
     try:
-        files = tracked_files()
+        files = sorted(set(tracked_files()) | set(distributed_files()))
         check_repos(cfg, err)
         check_symlinks(cfg, err)
         check_links(files, err)
         if not a.no_abs:
-            check_abs(files, err)
+            check_abs(files, err, cfg, scope)
     except Fail as e:
         print(str(e), file=sys.stderr)
         return 2
     print()
+    note = f'（警告 {warnings} 件。配布は止めない）' if warnings else ''
     if errors:
-        print(f'NG: 問題のあるパスが {errors} 件')
+        print(f'NG: 問題のあるパスが {errors} 件{note}')
         return 1
-    print('OK: 問題のあるパスは無い')
+    print(f'OK: 問題のあるパスは無い{note}')
     return 0

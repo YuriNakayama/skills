@@ -1,6 +1,6 @@
 """ハブのツールで共通に使うもの: 場所、設定（skills/repos.json）、スキルの一覧、ファイルの一覧とハッシュ。
 
-配布（sync.py）と検査（path_check.py、duplicated_skill.py）が同じ規則を使うように、ここにまとめる。
+配布（transfer.py）と検査（path_check.py、duplicated_skill.py）が同じ規則を使うように、ここにまとめる。
 """
 import filecmp
 import hashlib
@@ -13,6 +13,7 @@ SKILLS = os.path.join(HUB, 'skills')            # global/ shared/ repos/ と rep
 CONFIG = os.path.join(SKILLS, 'repos.json')     # 中の path はハブのルートからの相対パス
 USER_SKILLS = os.path.expanduser(os.environ.get('SKILLS_HUB_USER_DIR', '~/.claude/skills'))
 IGN = {'.DS_Store', '__pycache__'}              # 配布・比較のどちらでも無視するもの
+NOT_SKILL = '-workspace'     # skill-creator の評価の記録（<スキル名>-workspace/）。スキルではないので配布・取り込み・検査の対象にしない
 MANIFEST = '.hub-manifest'
 
 
@@ -52,11 +53,12 @@ def sources(repo, e):
 # ---------- skills ----------
 
 def subdirs(d):
-    """d の直下のディレクトリ名（隠しファイルと IGN を除く）を名前順で返す。"""
+    """d の直下のディレクトリ名（隠しファイル、IGN、*-workspace を除く）を名前順で返す。"""
     if not os.path.isdir(d):
         return []
     return sorted(n for n in os.listdir(d)
-                  if not n.startswith('.') and n not in IGN and os.path.isdir(os.path.join(d, n)))
+                  if not n.startswith('.') and n not in IGN and not n.endswith(NOT_SKILL)
+                  and os.path.isdir(os.path.join(d, n)))
 
 
 def list_skills():

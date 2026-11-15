@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """スキルのハブ（~/project/98_skills）の配布・取り込み・検査。
 
-  uv run src/hub.py sync [--check] [--repo X] [--force]      配布する（--check は状態を見るだけ）
-  uv run src/hub.py import X [skill ...] [--to own|shared] [--force]
-                                                             リポジトリ側の変更・未管理のスキルを取り込む
+  uv run src/hub.py diff [--repo X] [--here | --path D]     ハブとリポジトリの差分（状態）を表示する。何も書かない（差分があれば exit 1）
+  uv run src/hub.py export [--repo X] [--force] [--here | --path D]
+                                                             配布する（既定は全リポジトリの作業ツリーすべて）
+  uv run src/hub.py import X [skill ...] [--to own|shared] [--force] [--here | --path D | --ref R]
+                                                             リポジトリ側（worktree やブランチを含む）の変更・未管理のスキルを取り込む
   uv run src/hub.py register NAME PATH [--shared a,b]        リポジトリを管理下に入れる（登録と pre-commit の設置）
   uv run src/hub.py install-hook NAME... | --all              登録済みのリポジトリに pre-commit を設置する
   uv run src/hub.py uninstall-hook NAME | --path D           pre-commit から skills-hub の部分を取り除く
@@ -21,28 +23,39 @@ import sys
 import duplicated_skill
 import path_check
 import register
-import sync
+import transfer
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='src/hub.py', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest='cmd', required=True, metavar='{sync,import,register,install-hook,uninstall-hook,check-repo,claude-hook,check-paths,check-duplicates}')
+    sub = ap.add_subparsers(dest='cmd', required=True, metavar='{diff,export,import,register,install-hook,uninstall-hook,check-repo,claude-hook,check-paths,check-duplicates}')
 
-    p = sub.add_parser('sync', help='配布する', description=sync.SYNC_DOC,
+    p = sub.add_parser('diff', help='差分（状態）を表示する', description=transfer.SYNC_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--check', action='store_true', help='状態を表示するだけ（ずれがあれば exit 1）')
+    p.add_argument('--repo', help='1 リポジトリだけ')
+    p.add_argument('--here', action='store_true', help='作業中のディレクトリを含む作業ツリーだけ（--repo は省ける）')
+    p.add_argument('--path', help='作業ツリー PATH だけ（省くと、そのリポジトリの作業ツリーすべて）')
+    p.set_defaults(func=transfer.cmd_sync, check=True, force=False)
+
+    p = sub.add_parser('export', help='配布する', description=transfer.SYNC_DOC,
+                       formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--repo', help='1 リポジトリだけ')
     p.add_argument('--force', action='store_true', help='リポジトリ側の変更も上書きする')
-    p.set_defaults(func=sync.cmd_sync)
+    p.add_argument('--here', action='store_true', help='作業中のディレクトリを含む作業ツリーだけに配る（--repo は省ける）')
+    p.add_argument('--path', help='作業ツリー PATH だけに配る（省くと、そのリポジトリの作業ツリーすべて）')
+    p.set_defaults(func=transfer.cmd_sync, check=False)
 
-    p = sub.add_parser('import', help='取り込む', description=sync.IMPORT_DOC,
+    p = sub.add_parser('import', help='取り込む', description=transfer.IMPORT_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('repo')
     p.add_argument('skills', nargs='*', help='省くと、変更・未管理のスキルをすべて取り込む')
     p.add_argument('--to', choices=['own', 'shared'], help='分類を変えて取り込む（省くと今の分類を保つ）')
     p.add_argument('--force', action='store_true', help='ハブ側も変わっていても取り込む')
-    p.set_defaults(func=sync.cmd_import)
+    p.add_argument('--here', action='store_true', help='作業中のディレクトリを含む作業ツリーから取り込む')
+    p.add_argument('--path', help='作業ツリー PATH から取り込む')
+    p.add_argument('--ref', help='ブランチやコミット REF にコミットされている中身から取り込む')
+    p.set_defaults(func=transfer.cmd_import)
 
     p = sub.add_parser('register', help='リポジトリを管理下に入れる', description=register.DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -63,16 +76,18 @@ def main(argv=None):
     p.add_argument('--path', help='登録を外したリポジトリなど、場所で指定する')
     p.set_defaults(func=register.cmd_uninstall_hook)
 
-    p = sub.add_parser('check-repo', help='リポジトリ側の未取り込みの変更を見る', description=sync.CHECK_REPO_DOC,
+    p = sub.add_parser('check-repo', help='リポジトリ側の未取り込みの変更を見る', description=transfer.CHECK_REPO_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('repo', nargs='?', help='skills/repos.json での名前（省くと --here と同じ）')
     p.add_argument('--here', action='store_true', help='作業中のディレクトリからリポジトリを判定する')
     p.add_argument('--path', help='見る作業ツリー（省くと作業中のディレクトリの作業ツリー）')
-    p.set_defaults(func=sync.cmd_check_repo)
+    p.add_argument('--default-branch-only', action='store_true',
+                   help='既定のブランチ以外では、問題を表示するだけで exit 0（pre-commit 用）')
+    p.set_defaults(func=transfer.cmd_check_repo)
 
-    p = sub.add_parser('claude-hook', help='Claude Code の PostToolUse フックから呼ぶ', description=sync.CLAUDE_HOOK_DOC,
+    p = sub.add_parser('claude-hook', help='Claude Code の PostToolUse フックから呼ぶ', description=transfer.CLAUDE_HOOK_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.set_defaults(func=sync.cmd_claude_hook)
+    p.set_defaults(func=transfer.cmd_claude_hook)
 
     p = sub.add_parser('check-paths', help='パスを検査する', description=path_check.DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)

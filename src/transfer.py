@@ -1,4 +1,4 @@
-"""配布（sync）と取り込み（import）。入口は src/hub.py。
+"""配布（export）と取り込み（import）。入口は src/hub.py。
 
   skills/global/          -> ~/.claude/skills/<name>   （シンボリックリンク。全プロジェクト）
   skills/shared/          -> <repo>/.claude/skills     （コピー。repos.json の "shared" に書いたもの）
@@ -6,15 +6,15 @@
 
 各リポジトリの .claude/skills/.hub-manifest に、前回配布した時点の各スキルのハッシュを記録する。
 ハブ・リポジトリ・そのハッシュを比べて、どちらが変わったかを判定する:
-  new       リポジトリにまだ無い         -> sync でコピーする
-  same      同じ                         -> 何もしない（--check にも出ない）
-  hub       ハブだけ変わった             -> sync で上書きする（import は拒否）
-  repo      リポジトリだけ変わった       -> sync はスキップ、import で取り込む
-  both      両方変わった                 -> sync も import も --force が要る
-  unknown   差分があり記録が無い         -> sync も import も --force が要る
+  new       リポジトリにまだ無い         -> export でコピーする
+  same      同じ                         -> 何もしない（diff にも出ない）
+  hub       ハブだけ変わった             -> export で上書きする（import は拒否）
+  repo      リポジトリだけ変わった       -> export はスキップ、import で取り込む
+  both      両方変わった                 -> export も import も --force が要る
+  unknown   差分があり記録が無い         -> export も import も --force が要る
   unmanaged リポジトリにだけある         -> import でそのリポジトリの own として取り込む
 
-sync（--check 以外）は配布の前に check-paths と check-duplicates を実行し、どちらかが失敗したら配布しない。
+export は配布の前に check-paths と check-duplicates を実行し、どちらかが失敗したら配布しない。
 """
 import argparse
 import os
@@ -23,7 +23,7 @@ import subprocess
 import sys
 
 from common import (HUB, MANIFEST, SKILLS, USER_SKILLS, list_skills, load_cfg, mirror, repo_root,
-                    save_cfg, sources, tree_hash)
+                    save_cfg, sources, subdirs, tree_hash)
 
 SYNC_DOC = __doc__
 IMPORT_DOC = """リポジトリ側の変更・未管理のスキルをハブへ取り込む。
@@ -34,6 +34,12 @@ IMPORT_DOC = """リポジトリ側の変更・未管理のスキルをハブへ�
   uv run src/hub.py import X a --to own    skills/repos/X/ に取り込む
   uv run src/hub.py import X a --force     ハブ側も変わっていても取り込む
 
+取り込み元（省いたら登録した場所の作業ツリー）:
+  --here           作業中のディレクトリを含む作業ツリー（worktree でも、別のブランチを checkout していてもよい）
+  --path D         作業ツリー D
+  --ref R          ブランチやコミット R にコミットされている中身（checkout していなくてよい。git が無視するファイルは入らない）
+--here / --path では、取り込んだ後にその作業ツリーの .hub-manifest を更新する。--ref では作業ツリーに何も書かない。
+
 1 つの名前には 1 つの中身（規則）。取り込む先以外（global・shared・ほかのリポジトリの own）に
 同じ名前のスキルがあれば、--force でも取り込まない。振る舞いの違う版は skill-share で別の名前に分ける。
 """
@@ -41,8 +47,17 @@ IMPORT_DOC = """リポジトリ側の変更・未管理のスキルをハブへ�
 
 # ---------- manifest (baseline) ----------
 
+GITATTRIBUTES = '.gitattributes'
+GITATTRIBUTES_TEXT = ('# skills hub: ブランチのマージで .hub-manifest がぶつからないように、両方の行を残す。\n'
+                      '# 判定は記録のどれかと一致すれば「変わっていない」とみなし、次の export で 1 行に戻す。\n'
+                      f'{MANIFEST} merge=union\n')
+
+
 def read_manifest(target):
-    """{名前: ハッシュ または None} を返す。ハッシュの無い古い形式は None。"""
+    """{名前: 記録されたハッシュの集合} を返す。
+
+    マージ（merge=union）で 1 つのスキルに複数の行が残ることがあるので集合にする。ハッシュの無い古い形式は空集合。
+    """
     path = os.path.join(target, MANIFEST)
     out = {}
     if os.path.exists(path):
@@ -52,15 +67,77 @@ def read_manifest(target):
                 if not line or line.startswith('#'):
                     continue
                 name, _, h = line.partition('\t')
-                out[name] = h or None
+                out.setdefault(name, set())
+                if h:
+                    out[name].add(h)
     return out
 
 
+def parse_manifest(text):
+    out = {}
+    for line in text.splitlines():
+        if not line or line.startswith('#'):
+            continue
+        name, _, h = line.partition('\t')
+        out.setdefault(name, set())
+        if h:
+            out[name].add(h)
+    return out
+
+
+def branch_point_bases(tree):
+    """既定のブランチ以外を checkout している作業ツリーで、既定のブランチとの分岐点の記録を返す。
+
+    {名前: ハッシュの集合}。分岐点にコミットされていた .hub-manifest の記録と、分岐点のスキルの中身のハッシュ。
+    .hub-manifest に記録の無いスキル（ハブを使い始める前に分けたブランチなど）を判定する基準にする:
+    分岐点のままなら「ハブだけ変わった」、ブランチで直していれば「リポジトリだけ変わった」になる。
+    既定のブランチそのもの、git でない、分岐点が分からないときは {}。
+    """
+    if not tree or not git_out(['rev-parse', '--git-dir'], tree):
+        return {}
+    default = default_branch(tree)
+    branch = git_out(['branch', '--show-current'], tree)
+    if not default or branch == default:
+        return {}
+    mb = git_out(['merge-base', 'HEAD', default], tree)
+    if not mb:
+        return {}
+    out = parse_manifest(git_out(['show', f'{mb}:.claude/skills/{MANIFEST}'], tree))
+    tmp, error = export_ref(tree, mb)
+    if tmp:
+        try:
+            snap = os.path.join(tmp, '.claude', 'skills')
+            for n in subdirs(snap):
+                out.setdefault(n, set()).add(tree_hash(os.path.join(snap, n)))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return out
+
+
+def load_base(target, tree):
+    """target（.claude/skills）の記録。記録の無いスキルは、分岐点の記録で補う（branch_point_bases）。"""
+    base = read_manifest(target)
+    missing = [n for n in subdirs(target) if not base.get(n)]
+    if missing:
+        fb = branch_point_bases(tree)
+        for n in missing:
+            if fb.get(n):
+                base[n] = set(fb[n])
+    return base
+
+
 def write_manifest(target, base):
+    """base は {名前: ハッシュ または ハッシュの集合}。変わったときだけ書いて True を返す。"""
+    def hashes(v):
+        return sorted(v) if isinstance(v, (set, frozenset, list, tuple)) else ([v] if v else [])
+    lines = ''
+    for n in sorted(base):
+        hs = hashes(base[n])
+        lines += ''.join(f'{n}\t{h}\n' for h in hs) if hs else f'{n}\t\n'
     text = ('# Managed by the skills hub (~/project/98_skills). Do not edit these skills here.\n'
-            '# Edit the hub copy and run: cd ~/project/98_skills && uv run src/hub.py sync\n'
-            '# Changed one here anyway? Run: cd ~/project/98_skills && uv run src/hub.py import <repo>\n'
-            + ''.join(f'{n}\t{base[n] or ""}\n' for n in sorted(base)))
+            '# Edit the hub copy and run: cd ~/project/98_skills && uv run src/hub.py export\n'
+            '# Changed one here anyway? Run: cd ~/project/98_skills && uv run src/hub.py import <repo> --path <this worktree>\n'
+            + lines)
     path = os.path.join(target, MANIFEST)
     if os.path.exists(path):
         with open(path) as f:
@@ -72,31 +149,81 @@ def write_manifest(target, base):
     return True
 
 
-def classify(src, dst, base_hash):
+def classify(src, dst, bases):
+    """bases は記録されたハッシュの集合（マージで複数になることがある。無ければ空か None）。"""
     hs, hd = tree_hash(src), tree_hash(dst)
+    bases = bases or set()
     if hd is None:
         return 'new', hs
     if hs == hd:
         return 'same', hs
-    if base_hash is None:
+    if not bases:
         return 'unknown', hs
-    if hd == base_hash:
+    if hd in bases:         # リポジトリ側は過去に配った版のどれかのまま
         return 'hub', hs
-    if hs == base_hash:
+    if hs in bases:
         return 'repo', hs
     return 'both', hs
 
 
+def write_gitattributes(target, check):
+    """.claude/skills/.gitattributes（.hub-manifest を merge=union にする）。書く必要があれば True。"""
+    path = os.path.join(target, GITATTRIBUTES)
+    if os.path.exists(path):
+        with open(path) as f:
+            if f.read() == GITATTRIBUTES_TEXT:
+                return False
+    if not check:
+        os.makedirs(target, exist_ok=True)
+        with open(path, 'w') as f:
+            f.write(GITATTRIBUTES_TEXT)
+    return True
+
+
 # ---------- distribute ----------
 
-def sync_repo(repo, e, check, force):
-    target = os.path.join(repo_root(e), '.claude', 'skills')
+def norm(base):
+    """manifest の比較用に {名前: frozenset(ハッシュ)} にそろえる。"""
+    out = {}
+    for n, v in base.items():
+        if isinstance(v, (set, frozenset, list, tuple)):
+            out[n] = frozenset(v)
+        else:
+            out[n] = frozenset([v]) if v else frozenset()
+    return out
+
+
+def worktrees(root):
+    """root のリポジトリの作業ツリー（メインと linked worktree）の一覧。git でなければ [root]。
+
+    bare の項目と、場所が無くなった（prunable な）worktree は除く。
+    """
+    r = subprocess.run(['git', 'worktree', 'list', '--porcelain'], cwd=root, capture_output=True, text=True)
+    if r.returncode != 0:
+        return [root]
+    out, cur = [], None
+    for line in r.stdout.splitlines() + ['']:
+        if line.startswith('worktree '):
+            cur = {'path': line[len('worktree '):]}
+        elif line == 'bare' and cur is not None:
+            cur['bare'] = True
+        elif line == '' and cur is not None:
+            if not cur.get('bare') and os.path.isdir(cur['path']):
+                out.append(os.path.realpath(cur['path']))
+            cur = None
+    main = os.path.realpath(root)
+    return sorted(set(out) | {main}, key=lambda p: (p != main, p)) if out else [root]
+
+
+def sync_repo(repo, e, check, force, tree=None):
+    """tree（作業ツリー。省いたら登録した場所）の .claude/skills に配る。"""
+    target = os.path.join(tree or repo_root(e), '.claude', 'skills')
     srcs = sources(repo, e)
     missing = [s for s, p in srcs.items() if not os.path.isdir(p)]
     if missing:
         print(f'  ERROR hub has no source for: {missing}')
         return 1
-    base = read_manifest(target)
+    base = load_base(target, tree or repo_root(e))
     new_base, drift, blocked_n = {}, 0, 0
     for name, src in sorted(srcs.items()):
         dst = os.path.join(target, name)
@@ -109,28 +236,38 @@ def sync_repo(repo, e, check, force):
         if blocked:
             blocked_n += 1
             new_base[name] = base.get(name)
-            hint = {'repo': f'changed in repo. Run: uv run src/hub.py import {repo} {name}',
+            hint = {'repo': f'changed in repo. Run: uv run src/hub.py import {repo} {name}{path_opt(e, tree)}',
                     'both': 'changed in both hub and repo. Resolve, then use --force',
-                    'unknown': 'differs and no baseline. Decide which to keep, then import --force or sync --force'}[state]
+                    'unknown': 'differs and no baseline. Decide which to keep, then import --force or export --force'}[state]
             print(f'  {state:8} {name}  ({hint})')
             continue
         changes = mirror(src, dst, write=not check)
         print(f'  {state:8} {name}  ({len(changes)} file(s){" to write" if check else " written"})')
         new_base[name] = hs
-    existing = ({n for n in os.listdir(target) if os.path.isdir(os.path.join(target, n))}
-                if os.path.isdir(target) else set())
+    existing = set(subdirs(target))       # *-workspace（評価の記録）はスキルではないので数えない
     unmanaged = sorted(existing - srcs.keys())
     if unmanaged:
-        print(f'  unmanaged {", ".join(unmanaged)}  (only in repo. Run: uv run src/hub.py import {repo} <name>)')
+        print(f'  unmanaged {", ".join(unmanaged)}  (only in repo. Run: uv run src/hub.py import {repo} <name>{path_opt(e, tree)})')
     if check:
-        cur = read_manifest(target)
-        if cur != new_base:
+        if norm(read_manifest(target)) != norm(new_base):
             print('  manifest  baseline to update')
+            drift += 1
+        if os.path.isdir(target) and write_gitattributes(target, check=True):
+            print(f'  manifest  {GITATTRIBUTES} to write')
             drift += 1
         return drift + len(unmanaged)
     if write_manifest(target, new_base):
         print('  manifest  updated')
+    if write_gitattributes(target, check=False):
+        print(f'  manifest  {GITATTRIBUTES} written')
     return blocked_n + len(unmanaged)
+
+
+def path_opt(e, tree):
+    """登録した場所以外の作業ツリーなら、import に付ける --path を返す。"""
+    if tree and os.path.realpath(tree) != os.path.realpath(repo_root(e)):
+        return f' --path {tree}'
+    return ''
 
 
 def sync_global(check):
@@ -158,6 +295,12 @@ def sync_global(check):
     for name in sorted(os.listdir(USER_SKILLS)):
         p = os.path.join(USER_SKILLS, name)
         if os.path.islink(p) and not os.path.exists(p):
+            # ハブの skills/global を指していた切れたリンク（global のスキルを改名・削除した跡）は export が消す
+            dest = os.path.join(os.path.dirname(p), os.readlink(p))
+            if within(os.path.normpath(dest), os.path.normpath(gdir)) and not check:
+                os.remove(p)
+                print(f'  removed   {p} (the hub no longer has {os.path.relpath(dest, HUB)})')
+                continue
             print(f'  broken    {p} -> {os.readlink(p)}')
             drift += 1
         elif os.path.isdir(p) and not os.path.islink(p) and name not in ('synced', 'learned'):
@@ -166,14 +309,18 @@ def sync_global(check):
     return drift
 
 
-def gate():
-    """配布の前の関門: check-paths と check-duplicates。どちらかが 0 以外ならその終了コードを返す（例外は無い）。"""
+def gate(repo=None):
+    """配布の前の関門: check-paths と check-duplicates。どちらかが 0 以外ならその終了コードを返す（例外は無い）。
+
+    止めるのは規則の違反（配布するスキルの絶対パス、重複）と、repos.json とハブの中身の食い違いだけ。
+    登録したリポジトリが無い、切れたリンクなどは警告にとどめる（詳しくは check-paths の説明）。
+    repo を指定すると、絶対パスはそのリポジトリに配布するスキルの分だけを見る。
+    """
     import duplicated_skill
     import path_check
-    ns = argparse.Namespace(no_abs=False)
-    rc = path_check.main(ns)
+    rc = path_check.main(argparse.Namespace(no_abs=False, gate=True, repo=repo))
     print()
-    rd = duplicated_skill.main(ns)
+    rd = duplicated_skill.main(argparse.Namespace())
     print()
     worst = max(rc, rd)
     if worst:
@@ -187,8 +334,15 @@ def cmd_sync(a):
     if a.repo and a.repo not in cfg:
         print(f'unknown repo: {a.repo}', file=sys.stderr)
         return 2
-    if not a.check:     # 実際に配布するときだけ。--check は状態を見るだけなので検査しない
-        rc = gate()
+    only = None         # --here / --path: 1 つの作業ツリーだけに配る
+    if a.here or a.path:
+        name, tree, error = resolve_tree(cfg, a.repo, a.path or os.getcwd())
+        if error or name is None or tree is None:
+            print(error or f'{a.path or os.getcwd()} は登録済みのリポジトリの作業ツリーではない', file=sys.stderr)
+            return 2
+        a.repo, only = name, tree
+    if not a.check:     # 実際に配布するときだけ。diff は状態を見るだけなので検査しない
+        rc = gate(a.repo)
         if rc:
             return rc
     total = 0
@@ -198,12 +352,14 @@ def cmd_sync(a):
     for repo, e in cfg.items():
         if a.repo and repo != a.repo:
             continue
-        print(f'== {repo} ({repo_root(e)})')
         if not os.path.isdir(repo_root(e)):
-            print('  missing repo, skipped')
+            print(f'== {repo} ({repo_root(e)})\n  missing repo, skipped')
             continue
-        total += sync_repo(repo, e, a.check, a.force)
-    print(f'\n{"drift" if a.check else "not in sync"}: {total}')
+        # 既定ではそのリポジトリの作業ツリーすべて（メインと linked worktree）に配る
+        for tree in [only] if only else worktrees(repo_root(e)):
+            print(f'== {repo} ({tree})')
+            total += sync_repo(repo, e, a.check, a.force, tree)
+    print(f'\n{"drift" if a.check else "not exported"}: {total}')
     return 1 if total else 0
 
 
@@ -217,7 +373,22 @@ CHECK_REPO_DOC = """リポジトリ側の .claude/skills に、ハブへ取り�
 
 問題にするのはリポジトリ側の状態（unmanaged、repo、both、unknown）だけ。ハブ側の更新（hub、new）は問題にしない。
 register で設置する pre-commit から使う。問題があれば exit 1。
+
+  --default-branch-only   既定のブランチ（origin/HEAD、無ければ main か master）以外と、マージのコミットでは、
+                          問題を表示するだけで exit 0（pre-commit 用。開発中のブランチでは取り込む前のスキルもコミットでき、
+                          それを既定のブランチにマージしてから取り込めるようにする）
 """
+
+
+def default_branch(tree):
+    """既定のブランチの名前（origin/HEAD が指すもの。無ければ main、master のうちあるもの）。分からなければ ''。"""
+    ref = git_out(['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], tree)
+    if ref:
+        return ref.split('/', 1)[1] if '/' in ref else ref
+    for b in ('main', 'master'):
+        if git_out(['rev-parse', '--verify', '--quiet', f'refs/heads/{b}'], tree):
+            return b
+    return ''
 
 
 def git_out(args, cwd):
@@ -286,25 +457,34 @@ def cmd_check_repo(a):
     if not os.path.isdir(target):
         return 0
     srcs = sources(name, e)
-    base = read_manifest(target)
+    base = load_base(target, tree)
     problems = 0
-    for n in sorted(os.listdir(target)):
+    opt = path_opt(e, tree)
+    for n in subdirs(target):              # *-workspace（評価の記録）は対象外
         dst = os.path.join(target, n)
-        if n.startswith('.') or not os.path.isdir(dst):
-            continue
         if n not in srcs:
-            print(f'  unmanaged {n}  (ハブで管理されていない。取り込む: cd ~/project/98_skills && uv run src/hub.py import {name} {n})')
+            print(f'  unmanaged {n}  (ハブで管理されていない。取り込む: cd ~/project/98_skills && uv run src/hub.py import {name} {n}{opt})')
             problems += 1
             continue
         state, _ = classify(srcs[n], dst, base.get(n))
         if state == 'repo':
-            print(f'  repo     {n}  (リポジトリ側で変更されている。取り込む: cd ~/project/98_skills && uv run src/hub.py import {name} {n})')
+            print(f'  repo     {n}  (リポジトリ側で変更されている。取り込む: cd ~/project/98_skills && uv run src/hub.py import {name} {n}{opt})')
             problems += 1
         elif state in ('both', 'unknown'):
-            print(f'  {state:8} {n}  (ハブとリポジトリの両方に差分がある。どちらを残すか決めてから skill-sync で解消する)')
+            print(f'  {state:8} {n}  (ハブとリポジトリの両方に差分がある。どちらを残すか決めてから skill-transfer で解消する)')
             problems += 1
     if problems:
-        print(f'\n{name}: ハブに取り込まれていないスキルが {problems} 件（skill-sync で取り込む。'
+        branch = git_out(['branch', '--show-current'], tree)
+        default = default_branch(tree)
+        if getattr(a, 'default_branch_only', False) and default and branch != default:
+            print(f'\n{name}: ハブに取り込まれていないスキルが {problems} 件。{branch or "（ブランチ外）"} は既定のブランチ（{default}）'
+                  'ではないので、コミットは止めない（取り込みは上のコマンドか、マージ後に import --ref で行う）')
+            return 0
+        if getattr(a, 'default_branch_only', False) and git_out(['rev-parse', '-q', '--verify', 'MERGE_HEAD'], tree):
+            print(f'\n{name}: ハブに取り込まれていないスキルが {problems} 件。マージのコミットなので止めない'
+                  f'（マージした後に uv run src/hub.py import {name} <name> --ref {branch or "HEAD"} で取り込む）')
+            return 0
+        print(f'\n{name}: ハブに取り込まれていないスキルが {problems} 件（skill-transfer で取り込む。'
               f'今回だけ飛ばすなら git commit --no-verify）')
         return 1
     return 0
@@ -345,7 +525,7 @@ def cmd_claude_hook(a):
         return 0
     if rc == 1:
         reason = ('skills hub: このリポジトリの .claude/skills に、ハブへ取り込まれていない変更がある。'
-                  'skill-sync で取り込むか（新しいリポジトリなら skill-register）、ユーザーに確認する。\n' + out.getvalue())
+                  'skill-transfer で取り込むか（新しいリポジトリなら skill-register）、ユーザーに確認する。\n' + out.getvalue())
         print(json.dumps({'decision': 'block', 'reason': reason}, ensure_ascii=False))
     return 0
 
@@ -358,10 +538,54 @@ def cmd_import(a):
         print(f'unknown repo: {a.repo}', file=sys.stderr)
         return 2
     e = cfg['repos'][a.repo]
-    target = os.path.join(repo_root(e), '.claude', 'skills')
+    if sum(bool(x) for x in (a.here, a.path, a.ref)) > 1:
+        print('--here、--path、--ref はどれか 1 つだけ', file=sys.stderr)
+        return 2
+    tmp = None
+    try:
+        if a.ref:
+            tmp, error = export_ref(repo_root(e), a.ref)
+            if error:
+                print(error, file=sys.stderr)
+                return 2
+            tree = tmp
+        elif a.here or a.path:
+            _, tree, error = resolve_tree(cfg['repos'], a.repo, a.path or os.getcwd())
+            if error or tree is None:
+                print(error or f'{a.path or os.getcwd()} は {a.repo} の作業ツリーではない', file=sys.stderr)
+                return 2
+        else:
+            tree = repo_root(e)
+        return import_from(a, cfg, e, os.path.join(tree, '.claude', 'skills'), write_back=not a.ref,
+                           tree=None if a.ref else tree)
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def export_ref(root, ref):
+    """ref にコミットされている .claude/skills を一時ディレクトリに取り出す。(ディレクトリ, エラー) を返す。"""
+    import tarfile
+    import tempfile
+    if not git_out(['rev-parse', '--verify', '--quiet', ref + '^{commit}'], root):
+        return None, f'{ref} は {root} のブランチやコミットではない'
+    tmp = tempfile.mkdtemp(prefix='skills-hub-ref-')
+    r = subprocess.run(['git', 'archive', '--format=tar', ref, '--', '.claude/skills'],
+                       cwd=root, capture_output=True)
+    if r.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None, f'{ref} に .claude/skills が無い（{r.stderr.decode(errors="replace").strip()}）'
+    import io
+    with tarfile.open(fileobj=io.BytesIO(r.stdout)) as t:
+        t.extractall(tmp, filter='data')
+    return tmp, None
+
+
+def import_from(a, cfg, e, target, write_back, tree):
+    """target（取り込み元の .claude/skills）から取り込む。write_back なら target の .hub-manifest も更新する。"""
     srcs = sources(a.repo, e)
-    base = read_manifest(target)
-    existing = sorted(n for n in os.listdir(target) if os.path.isdir(os.path.join(target, n)))
+    base = load_base(target, tree)
+    existing = subdirs(target)
 
     names = a.skills
     if not names:
@@ -390,7 +614,7 @@ def cmd_import(a):
                 print(f'  same     {n}  (nothing to import)')
                 continue
             if state == 'hub':     # リポジトリ側は前回配布のまま。取り込むものは無い
-                print(f'  hub      {n}  (only the hub changed. Run sync instead of import)')
+                print(f'  hub      {n}  (only the hub changed. Run export instead of import)')
                 failed += 1
                 continue
             if state in ('both', 'unknown') and not a.force:
@@ -429,14 +653,16 @@ def cmd_import(a):
                 shutil.rmtree(stale)
         changes = mirror(dst, dest, write=True)
         imported += 1
-        base[n] = tree_hash(dest)
+        base[n] = {tree_hash(dest)}
         print(f'  import   {n} -> {os.path.relpath(dest, HUB)}  ({len(changes)} file(s))')
         if to == 'shared':
             users = sorted(r for r, x in cfg['repos'].items() if r != a.repo and n in x.get('shared', []))
             if users:
-                print(f'           also distributed to: {", ".join(users)} (on next sync)')
+                print(f'           also distributed to: {", ".join(users)} (on next export)')
     if imported:
         save_cfg(cfg)
-        write_manifest(target, {k: v for k, v in base.items() if k in sources(a.repo, e)})
+        if write_back:
+            write_manifest(target, {k: v for k, v in base.items() if k in sources(a.repo, e)})
         print('\nReview with: git -C ~/project/98_skills diff')
+        print(f'Then distribute: uv run src/hub.py export --repo {a.repo}  (every worktree of {a.repo})')
     return 1 if failed else 0

@@ -29,10 +29,8 @@
         "remove-unused",
         "research-clustering",
         "research-gather",
-        "research-gather-workspace",
         "research-prompt-builder",
         "research-retrieval",
-        "research-retrieval-workspace",
         "skill-creator",
         "skill-list",
         "tdd",
@@ -92,8 +90,7 @@
         "verify"
       ],
       "own": [
-        "code-explain",
-        "code-explain-workspace"
+        "code-explain"
       ]
     },
     "ptcg": {
