@@ -15,6 +15,8 @@
   unmanaged リポジトリにだけある         -> import でそのリポジトリの own として取り込む
 
 export は配布の前に check-paths と check-duplicates を実行し、どちらかが失敗したら配布しない。
+export が書くのは、既定のブランチを checkout している作業ツリーだけ（ほかのブランチは作業中とみなす。--path / --here で
+明示すれば書く）。ハブで未コミットのスキルは配らない（編集途中を広げない。コミットしてから export する）。
 """
 import argparse
 import os
@@ -215,6 +217,36 @@ def worktrees(root):
     return sorted(set(out) | {main}, key=lambda p: (p != main, p)) if out else [root]
 
 
+_UNCOMMITTED = None
+
+
+def uncommitted_skills():
+    """ハブで未コミットの変更があるスキルのディレクトリ（ハブからの相対パス）の集合。"""
+    global _UNCOMMITTED
+    if _UNCOMMITTED is None:
+        r = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=all', '--', 'skills'],
+                           cwd=HUB, capture_output=True, text=True)
+        out = r.stdout if r.returncode == 0 else ''     # git_out は先頭の空白も削るので使わない
+        dirs = set()
+        for line in out.splitlines():
+            path = line[3:].split(' -> ')[-1].strip('"')
+            parts = path.split('/')
+            if len(parts) >= 3 and parts[1] in ('global', 'shared'):
+                dirs.add('/'.join(parts[:3]))
+            elif len(parts) >= 4 and parts[1] == 'repos':
+                dirs.add('/'.join(parts[:4]))
+        _UNCOMMITTED = dirs
+    return _UNCOMMITTED
+
+
+def on_default_branch(tree):
+    """tree が既定のブランチを checkout しているか。git でない、既定のブランチが分からないときは True。"""
+    if not git_out(['rev-parse', '--git-dir'], tree):
+        return True
+    default = default_branch(tree)
+    return not default or git_out(['branch', '--show-current'], tree) == default
+
+
 def sync_repo(repo, e, check, force, tree=None):
     """tree（作業ツリー。省いたら登録した場所）の .claude/skills に配る。"""
     target = os.path.join(tree or repo_root(e), '.claude', 'skills')
@@ -240,6 +272,12 @@ def sync_repo(repo, e, check, force, tree=None):
                     'both': 'changed in both hub and repo. Resolve, then use --force',
                     'unknown': 'differs and no baseline. Decide which to keep, then import --force or export --force'}[state]
             print(f'  {state:8} {name}  ({hint})')
+            continue
+        if os.path.relpath(src, HUB) in uncommitted_skills():
+            # ハブで編集中（未コミット）のスキルは配らない。ほかのセッションの作業途中を広げないため
+            blocked_n += 1
+            new_base[name] = base.get(name)
+            print(f'  {state:8} {name}  (uncommitted in the hub: commit {os.path.relpath(src, HUB)} first, then export)')
             continue
         changes = mirror(src, dst, write=not check)
         print(f'  {state:8} {name}  ({len(changes)} file(s){" to write" if check else " written"})')
@@ -355,9 +393,16 @@ def cmd_sync(a):
         if not os.path.isdir(repo_root(e)):
             print(f'== {repo} ({repo_root(e)})\n  missing repo, skipped')
             continue
-        # 既定ではそのリポジトリの作業ツリーすべて（メインと linked worktree）に配る
+        # 既定ではそのリポジトリの作業ツリーすべて（メインと linked worktree）を見る。
+        # 配る（書く）のは既定のブランチを checkout している作業ツリーだけ。ほかのブランチは作業中なので、
+        # --path / --here で明示したときだけ書く（diff はすべてを表示する）
         for tree in [only] if only else worktrees(repo_root(e)):
             print(f'== {repo} ({tree})')
+            if not a.check and not only and not on_default_branch(tree):
+                branch = git_out(['branch', '--show-current'], tree) or 'detached HEAD'
+                print(f'  skipped  ({branch} is not the default branch: work in progress. '
+                      f'To update it anyway: uv run src/hub.py export --path {tree})')
+                continue
             total += sync_repo(repo, e, a.check, a.force, tree)
     print(f'\n{"drift" if a.check else "not exported"}: {total}')
     return 1 if total else 0
@@ -664,5 +709,6 @@ def import_from(a, cfg, e, target, write_back, tree):
         if write_back:
             write_manifest(target, {k: v for k, v in base.items() if k in sources(a.repo, e)})
         print('\nReview with: git -C ~/project/98_skills diff')
-        print(f'Then distribute: uv run src/hub.py export --repo {a.repo}  (every worktree of {a.repo})')
+        print(f'Then commit in the hub and distribute: uv run src/hub.py export --repo {a.repo}'
+              '  (uncommitted hub skills are not exported)')
     return 1 if failed else 0

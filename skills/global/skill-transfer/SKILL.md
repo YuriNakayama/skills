@@ -72,7 +72,7 @@ uv run src/hub.py import <repo> <name>     # shared のスキルは skills/share
 | ほかの作業ツリー | `--path <作業ツリー>`（pre-commit やフックの知らせにはこの形で出る） |
 | マージ済みのブランチ、checkout していないブランチ | `--ref <branch>`（コミットされた中身を読む。git が無視するファイルは入らない） |
 
-取り込んだら `uv run src/hub.py export --repo <repo>` で、そのリポジトリの worktree すべてに配る。
+取り込んだら 98_skills でコミットしてから `uv run src/hub.py export --repo <repo>` で配る（未コミットのスキルは配らない）。書くのは既定のブランチを checkout している作業ツリーだけで、ほかのブランチ（作業中）は飛ばす。ほかのブランチに届けるのは、ユーザーに確かめてから `--path <作業ツリー>` で行う。
 
 shared のスキルを取り込むと、それを使う全リポジトリに次回配布される。取り込む前に影響するリポジトリを示す:
 

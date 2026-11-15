@@ -89,7 +89,7 @@ Claude が管理下のリポジトリの `.claude/skills` を書くと、ハブ�
 | マージしてから取り込む | 1. worktree の `.claude/skills/<name>/` で開発し、そのブランチでコミットする（既定のブランチではないので pre-commit は知らせるだけ）<br>2. 既定のブランチにマージする<br>3. `uv run src/hub.py import <repo> <name> --ref main`（どこで何を checkout していても、main にコミットされた中身を取り込む）<br>4. `uv run src/hub.py export --repo <repo>` で全部の worktree に配り、main で `.hub-manifest` などをコミットする |
 | マージの前に直接取り込む | 1. worktree で開発する<br>2. その worktree で `uv run --project ~/project/98_skills ~/project/98_skills/src/hub.py import <repo> <name> --here`（checkout していないブランチからなら `--ref <branch>`）<br>3. `export --repo <repo>` で配り、そのブランチでコミットする。直し続けるなら 2〜3 を繰り返す |
 
-ハブを更新したら `export`（`--repo <repo>`）で、そのリポジトリの今ある worktree すべてに届く。
+ハブを更新したら、コミットしてから `export`（`--repo <repo>`）を実行する。既定のブランチを checkout している作業ツリーに届く。ほかのブランチの作業ツリーには、その中で `export --here` を実行したときに届く。
 ほかのブランチに切り替えたとき、新しく worktree を作ったときは、post-checkout がハブとの差を知らせるので、その作業ツリーで `export --here` を実行する（届いたスキルは未コミットの変更として現れるので、そのブランチでコミットする）。
 取り込んだスキルは、元のブランチをマージしなくてもハブに残り、どのブランチにも配られる。
 2 つのブランチに違う版が配られてマージでスキルのファイルがぶつかったら、どちらかを採ってから `export` を実行すれば、ハブの版にそろう。
@@ -102,6 +102,7 @@ Claude が管理下のリポジトリの `.claude/skills` を書くと、ハブ�
 - **配布するスキルに絶対パスを書かない。** `skills/shared/` と `skills/repos/` のスキルには `~/project/...` などの絶対パスを書かない（コピー先のクローン・worktree・クラウドで壊れるため）。`skills/global/` は例外。書き方は `skills/global/skill-share/references/portability.md`。
 - **例外は設けない。** 許可リストは無い。`uv run src/hub.py export` は配布の前に `check-paths` と `check-duplicates` を実行し、規則の違反（配布するスキルの絶対パス、重複）か `repos.json` とハブの食い違いがあれば何も配布しない（`--repo X` では、絶対パスは X に配布するスキルの分だけを見る）。登録したリポジトリが無い、切れたリンクなどは警告だけで配布は続ける。直せない違反のあるスキルは、直すまで配布しない。
 - `<スキル名>-workspace/`（skill-creator の評価の記録）はスキルではない。ハブに置いてよいが、配布・取り込み・検査の対象にしない（`repos.json` に載せない。リポジトリ側にできたものも未管理のスキルとして扱わない）。
+- **作業中のものに触らない。** `export` が書くのは、既定のブランチ（main など）を checkout している作業ツリーだけ。ほかのブランチの作業ツリー（worktree や、別のブランチに切り替えたメインの作業ツリー）は作業中とみなして飛ばす（`diff` には出る。書くなら `--path` か `--here` で明示する）。ハブで未コミットのスキルも配らない（ほかのセッションの編集途中を広げないため。コミットしてから `export`）。
 - 配布後は各リポジトリで `.claude/skills` の変更をコミットする。
 - `~/.claude/skills/synced` と `learned` は Claude アプリが管理するので触らない。
 
