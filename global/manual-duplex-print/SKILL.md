@@ -23,9 +23,12 @@ Double-sided output is done in two passes: fronts (odd pages), user reloads pape
 1. **Get the PDF** into the scratchpad (its own directory):
    `curl -sL -o <dir>/x.pdf <url>` ; check with `pdfinfo` (page count).
 2. **Resolve the page range.**
-   - Papers: by default the user wants **body only**. Skip references and appendices.
-     Find the `References` heading page with `pdftotext -f N -l N -layout`; keep that page if body text is on it.
+   - Papers: find where references and appendices start.
+     Find the `References` heading page with `pdftotext -f N -l N -layout`; the page is body if body text is on it.
      Check whether an appendix (`A  <Title>`) follows the references.
+     **Before printing, ask the user** with AskUserQuestion whether to print references and appendices.
+     Show a table (paper | body pages | references pages | appendix pages | sheets with / without).
+     Options: 本文のみ (recommended), 本文＋付録, すべて. Do not send any job until answered.
    - If the user gives book/printed page numbers or section numbers, compute the PDF-page offset:
      `pdftotext -f N -l N -layout x.pdf - | grep -oE '(^| )[0-9]{3}( |$)'` to read the printed number on PDF page N,
      and grep for `§` / section headers to find section boundaries. Report a table
