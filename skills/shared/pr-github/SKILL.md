@@ -20,7 +20,7 @@ feature/<topic>  → main   # 新機能・改善
 fix/<topic>      → main   # バグ修正・hotfix（緊急かどうかは関係なく fix で統一）
 ```
 
-ブランチ名の命名は短く、目的が読み取れる単語にする（例: `feature/dvc-data-control`, `fix/replay-loser-obs-fields`）。 release / develop / hotfix といった長命ブランチは存在しない。リリースは `main` から直接タグを打って行う（`release-tag-github` skill を参照）。
+ブランチ名の命名は短く、目的が読み取れる単語にする（例: `feature/data-export`, `fix/login-timeout`）。 release / develop / hotfix といった長命ブランチは存在しない。リリースは `main` から直接タグを打って行う（`release-tag-github` skill を参照）。
 
 ## Steps
 

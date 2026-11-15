@@ -53,7 +53,8 @@ cd "$ROOT"
 |---|---|---|
 | What is tracked | stage outputs declared in `dvc.yaml`, plus any `dvc add`ed paths | only `dvc add`ed directories, each with its own `<path>.dvc` stub (e.g. one per training run under `data/output/models/`) |
 | Extra commands | `dvc dag`, `dvc metrics show`, `dvc commit` | none |
-| `pull` / `fetch` / `push` | everything by default, or a path/stage | **always a `.dvc` target**. A bare pull finds nothing to restore and can delete directories |
+| `pull` / `fetch` | everything by default, or a path/stage | **always a `.dvc` target**. A bare pull finds nothing to restore and can delete directories |
+| `push` | everything by default, or a path/stage | everything by default, or a `.dvc` target |
 
 ## Interaction flow
 
@@ -97,9 +98,10 @@ Ask only when the chosen command needs a target:
 
 - `dvc status` / `dvc status --cloud` / `dvc dag` / `dvc metrics show` — no extra question
 - `dvc diff` — ask for the git ref (default: HEAD)
-- `dvc pull` / `dvc fetch` / `dvc push`:
+- `dvc pull` / `dvc fetch`:
   - pipeline mode — ask whether to act on everything or a specific path/stage; default = everything
   - tracked-dirs mode — **always ask for the `.dvc` target**; list candidates with `find data -name '*.dvc'`
+- `dvc push` — ask whether to push everything or a specific path/stage (`.dvc` target in tracked-dirs mode); default = everything
 - `dvc add` — ask for the path (free text). Resolve relative to `$ROOT`.
 - `dvc commit` — ask which stage(s); default = all stages with `--force`
 
@@ -146,7 +148,7 @@ You: Step 0, then ask Step 1 (category), then Step 2 (subcommand), then Step 3 i
 
 User: "push my changes to S3"
 
-You: Step 0. Skip Step 1 (category is 同期). Skip Step 2 (subcommand is `push`). In tracked-dirs mode ask for the `.dvc` target. Run `"$DVC" status --cloud` to count out-of-sync objects, Step 4 confirms, then run `"$DVC" push [<target>]`.
+You: Step 0. Skip Step 1 (category is 同期). Skip Step 2 (subcommand is `push`). Run `"$DVC" status --cloud` to count out-of-sync objects, Step 4 confirms, then run `"$DVC" push [<target>]`.
 
 **Example 3 — already specific**
 
