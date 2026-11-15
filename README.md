@@ -17,7 +17,7 @@
 | パス | 内容 |
 |---|---|
 | `skills/repos.json` | 配布先のリポジトリと、それぞれに配るスキルの一覧。`path` はハブのルートからの相対パス（`skills/` からではない） |
-| `src/` | ハブのツール（Python）。入口は `src/hub.py`（サブコマンド `sync`・`import`・`check-paths`・`check-duplicates`）。中身は `common.py`（共通）、`sync.py`（配布と取り込み）、`path_check.py`（パスの検査）、`duplicated_skill.py`（重複の検査） |
+| `src/` | ハブのツール（Python）。入口は `src/hub.py`（サブコマンドは `uv run src/hub.py --help`）。中身は `common.py`（共通）、`sync.py`（配布・取り込み・check-repo・claude-hook）、`register.py`（register・install-hook・uninstall-hook）、`path_check.py`（パスの検査）、`duplicated_skill.py`（重複の検査） |
 | `pyproject.toml`、`.python-version`、`uv.lock` | Python の環境（uv で管理） |
 
 ## 使い方
@@ -66,8 +66,10 @@ uv run src/hub.py check-duplicates                # スキルの重複（層を�
 3. `uv run src/hub.py sync --repo <名前>` で配布し、リポジトリ側で `.claude/skills` と `.hub-manifest` をコミットする。
 
 既に登録済みのリポジトリに pre-commit を入れる（入れ直す）ときは `uv run src/hub.py install-hook <名前>`（全部なら `--all`）。
+管理から外したリポジトリでは `uv run src/hub.py uninstall-hook --path <場所>` で取り除く（登録中なら名前でも指定できる）。
+pre-commit が止めるのは、取り込まれていない変更が見つかったときだけ。ハブのツールや uv が無い、確かめられなかったときは警告してコミットを続ける。
 
-Claude Code のユーザー設定（`~/.claude/settings.json`）の `PostToolUse` フックからも `uv run src/hub.py claude-hook` を呼んでいる。
+Claude Code のユーザー設定（`~/.claude/settings.json`）の `PostToolUse` フックからも `uv run src/hub.py claude-hook` を呼んでいる（`src/hub.py` と uv が無ければ何もしない）。
 Claude が管理下のリポジトリの `.claude/skills` を書くと、ハブへ取り込まれていない変更や未管理のスキルをその場で Claude に伝える
 （コミットを待たずに気づくため。止めはしない）。
 

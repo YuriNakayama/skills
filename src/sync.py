@@ -14,6 +14,7 @@
   unknown   差分があり記録が無い         -> sync も import も --force が要る
   unmanaged リポジトリにだけある         -> import でそのリポジトリの own として取り込む
 """
+import argparse
 import os
 import shutil
 import subprocess
@@ -207,20 +208,54 @@ def main_root(d):
     return os.path.realpath(os.path.dirname(common))
 
 
+def within(path, root):
+    return path == root or path.startswith(root.rstrip('/') + '/')
+
+
+def resolve_tree(cfg, name, path):
+    """check-repo が見る作業ツリーと、リポジトリ名を決める。(名前, 作業ツリー, エラー) を返す。
+
+    - path を省いたら作業中のディレクトリを使う。git の作業ツリー（worktree を含む）ならそのルート。
+    - git でなければ（carrier など）、登録済みのリポジトリの場所を親方向にたどって照合する。
+    - 名前を指定して、作業中のディレクトリがそのリポジトリの外（ハブなど）なら、登録済みの場所を見る。
+    - 名前を省いたら、作業中のディレクトリから判定する（管理外なら名前は None）。
+    """
+    explicit = path is not None
+    cwd = os.path.realpath(path or os.getcwd())
+    top = git_out(['rev-parse', '--show-toplevel'], cwd)
+    top = os.path.realpath(top) if top else ''
+    main = main_root(cwd)
+    roots = {r: os.path.realpath(repo_root(e)) for r, e in cfg.items() if not e.get('path', '').startswith('~')}
+
+    def owner():
+        if main:        # git の中: メインの作業ツリーが登録済みなら、今の作業ツリー（worktree を含む）を見る
+            hit = next((r for r, rr in roots.items() if rr == main), None)
+            if hit:
+                return hit, top or main
+        # git でない、またはメインの作業ツリーが登録されていない: 作業中のディレクトリを含む登録済みの場所（いちばん深いもの）
+        hits = sorted(((r, rr) for r, rr in roots.items() if within(cwd, rr)), key=lambda x: -len(x[1]))
+        return hits[0] if hits else (None, None)
+
+    found, tree = owner()
+    if name is None:
+        return found, tree, None
+    if name not in cfg:
+        return name, None, f'unknown repo: {name}'
+    if found == name:
+        return name, tree, None
+    if explicit:
+        return name, None, f'{path} は {name} の作業ツリーではない'
+    return name, roots.get(name), None
+
+
 def cmd_check_repo(a):
     cfg = load_cfg()['repos']
-    cwd = os.path.realpath(a.path or os.getcwd())
-    top = git_out(['rev-parse', '--show-toplevel'], cwd)
-    tree = os.path.realpath(top) if top else cwd
-    name = a.repo
-    if a.here or not name:
-        root = main_root(cwd) or tree
-        name = next((r for r, e in cfg.items() if os.path.realpath(repo_root(e)) == root), None)
-        if name is None:
-            return 0        # 管理外のリポジトリ
-    if name not in cfg:
-        print(f'unknown repo: {name}', file=sys.stderr)
+    name, tree, error = resolve_tree(cfg, None if a.here else a.repo, a.path)
+    if error:
+        print(error, file=sys.stderr)
         return 2
+    if name is None or tree is None:
+        return 0        # 管理外のリポジトリ
     e = cfg[name]
     target = os.path.join(tree, '.claude', 'skills')
     if not os.path.isdir(target):
@@ -254,7 +289,10 @@ CLAUDE_HOOK_DOC = """Claude Code の PostToolUse フック（Write / Edit / Mult
 
 標準入力のフックの JSON から書いたファイルを取り出し、それが管理下のリポジトリの .claude/skills の下なら
 check-repo --here と同じ判定をする。ハブへ取り込まれていない変更や未管理のスキルがあれば、
-内容を標準エラーに出して exit 2（Claude に伝わる）。それ以外は何もせず exit 0。
+{"decision": "block", "reason": ...} を標準出力に出す（Claude に伝わる。ツールの実行は取り消されない）。
+
+終了コードは常に 0。判定できなかったとき（ハブの設定が読めないなど）も何も出さずに 0 で終わり、
+Claude の作業を邪魔しない。
 """
 
 
@@ -264,30 +302,27 @@ def cmd_claude_hook(a):
     import json
     try:
         data = json.load(sys.stdin)
-    except ValueError:
+        if not isinstance(data, dict):
+            return 0
+        f = ((data.get('tool_input') or {}).get('file_path')
+             or (data.get('tool_response') or {}).get('filePath') or '')
+        if '/.claude/skills/' not in f or os.path.basename(f) == MANIFEST:
+            return 0
+        d = os.path.dirname(f)
+        while d and d != '/' and not os.path.isdir(d):
+            d = os.path.dirname(d)
+        if not d:
+            return 0
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cmd_check_repo(argparse.Namespace(repo=None, here=True, path=d))
+    except Exception:
         return 0
-    f = (data.get('tool_input') or {}).get('file_path') or (data.get('tool_response') or {}).get('filePath') or ''
-    if '/.claude/skills/' not in f or os.path.basename(f) == MANIFEST:
-        return 0
-    d = os.path.dirname(f)
-    while d and not os.path.isdir(d):
-        d = os.path.dirname(d)
-    if not d:
-        return 0
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        rc = cmd_check_repo(argparse_ns(repo=None, here=True, path=d))
     if rc == 1:
-        print('skills hub: このリポジトリの .claude/skills に、ハブへ取り込まれていない変更がある。\n'
-              'skill-sync で取り込むか（新しいリポジトリなら skill-register）、ユーザーに確認する。\n'
-              + out.getvalue(), file=sys.stderr)
-        return 2
+        reason = ('skills hub: このリポジトリの .claude/skills に、ハブへ取り込まれていない変更がある。'
+                  'skill-sync で取り込むか（新しいリポジトリなら skill-register）、ユーザーに確認する。\n' + out.getvalue())
+        print(json.dumps({'decision': 'block', 'reason': reason}, ensure_ascii=False))
     return 0
-
-
-def argparse_ns(**kw):
-    import argparse
-    return argparse.Namespace(**kw)
 
 
 # ---------- import ----------

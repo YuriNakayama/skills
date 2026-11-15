@@ -35,12 +35,16 @@ def git(args, cwd):
 def hook_block(name):
     return f"""{BEGIN}
 # skills hub（{HUB}）: .claude/skills の変更がハブに取り込まれているか確かめる。
-# ハブや uv が無い環境では何もしない。今回だけ飛ばすなら git commit --no-verify。
-# この部分は uv run src/hub.py register が書き換える。
+# 止めるのは取り込まれていない変更が見つかったとき（exit 1）だけ。ハブのツールや uv が無い、
+# 確かめられなかった（ハブが別のブランチにある、リポジトリの登録を外したなど）ときは警告してコミットを続ける。
+# 今回だけ飛ばすなら git commit --no-verify。この部分は uv run src/hub.py install-hook が書き換え、uninstall-hook が消す。
 skills_hub="{HUB}"
-if [ -d "$skills_hub" ] && command -v uv >/dev/null 2>&1 \\
+if [ -f "$skills_hub/src/hub.py" ] && command -v uv >/dev/null 2>&1 \\
    && git diff --cached --name-only -- .claude/skills | grep -q .; then
-  uv run --quiet --project "$skills_hub" "$skills_hub/src/hub.py" check-repo {name} --path "$(git rev-parse --show-toplevel)" || exit 1
+  uv run --quiet --project "$skills_hub" "$skills_hub/src/hub.py" check-repo {name} --path "$(git rev-parse --show-toplevel)"
+  skills_hub_rc=$?
+  if [ "$skills_hub_rc" -eq 1 ]; then exit 1; fi
+  if [ "$skills_hub_rc" -ne 0 ]; then echo "skills hub: 確かめられなかった（exit $skills_hub_rc）。コミットは続ける" >&2; fi
 fi
 {END}
 """
@@ -165,3 +169,52 @@ def cmd_install_hook(a):
         if 'pre-commit は設置しない。' in msg:
             manual += 1
     return 1 if manual else 0
+
+
+UNINSTALL_DOC = """pre-commit から skills-hub の部分を取り除く（管理から外したリポジトリの後始末）。
+
+  uv run src/hub.py uninstall-hook <名前>        skills/repos.json に登録されているリポジトリ
+  uv run src/hub.py uninstall-hook --path <dir>  登録を外したリポジトリなど、場所で指定する
+
+取り除いた後に shebang しか残らなければ、ファイルごと消す。core.hooksPath や .pre-commit-config.yaml の
+仕組みに自分で足した行は対象外（それぞれの設定から手で消す）。
+"""
+
+
+def remove_hook(root):
+    if git(['rev-parse', '--git-dir'], root) is None:
+        return 'git リポジトリではないので、何もしない'
+    hooks = git(['rev-parse', '--path-format=absolute', '--git-path', 'hooks'], root)
+    path = os.path.join(hooks, 'pre-commit')
+    if not os.path.exists(path):
+        return f'{path} が無い'
+    with open(path) as f:
+        text = f.read()
+    if BEGIN not in text or END not in text:
+        return f'{path} に skills-hub の部分が無い'
+    head, rest = text.split(BEGIN, 1)
+    text = (head.rstrip('\n') + '\n' + rest.split(END, 1)[1].lstrip('\n')).rstrip('\n') + '\n'
+    if text.strip() in ('', '#!/bin/sh', '#!/bin/bash', '#!/usr/bin/env sh', '#!/usr/bin/env bash'):
+        os.remove(path)
+        return f'{path} を消した（skills-hub の部分しか無かった）'
+    with open(path, 'w') as f:
+        f.write(text)
+    return f'{path} から skills-hub の部分を取り除いた'
+
+
+def cmd_uninstall_hook(a):
+    from common import repo_root
+    if a.path:
+        root = os.path.realpath(os.path.expanduser(a.path))
+        label = a.path
+    else:
+        cfg = load_cfg()['repos']
+        if not a.name or a.name not in cfg:
+            print(f'unknown repo: {a.name}（登録を外したリポジトリは --path で指定する）', file=sys.stderr)
+            return 2
+        root, label = repo_root(cfg[a.name]), a.name
+    if not os.path.isdir(root):
+        print(f'ディレクトリが無い: {label}', file=sys.stderr)
+        return 2
+    print(f'== {label}\n  ' + remove_hook(root))
+    return 0

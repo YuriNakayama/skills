@@ -74,6 +74,7 @@ description: Decide and carry out how a skill in the skills hub (~/project/98_sk
    - 名前を省いた `uv run src/hub.py import <repo>` で own として取り込まれてしまう。
    残すならこの 2 点をユーザーに伝え、そのリポジトリでは一括取り込みを使わない。
 4. `uv run src/hub.py check-paths` を実行する。
+5. リポジトリそのものを管理から外す（`skills/repos.json` から消す）ときは、先に `uv run src/hub.py uninstall-hook <名前>` で pre-commit を取り除く（消した後なら `--path <場所>`）。
 
 ## 移植性の修正だけを行うとき
 

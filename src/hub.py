@@ -6,12 +6,13 @@
                                                              リポジトリ側の変更・未管理のスキルを取り込む
   uv run src/hub.py register NAME PATH [--shared a,b]        リポジトリを管理下に入れる（登録と pre-commit の設置）
   uv run src/hub.py install-hook NAME... | --all              登録済みのリポジトリに pre-commit を設置する
+  uv run src/hub.py uninstall-hook NAME | --path D           pre-commit から skills-hub の部分を取り除く
   uv run src/hub.py check-repo [NAME | --here] [--path D]    リポジトリ側に未取り込みの変更が無いかを見る（pre-commit 用）
-  uv run src/hub.py claude-hook                              Claude Code の PostToolUse フックから呼ぶ（--here の判定）
+  uv run src/hub.py claude-hook                              Claude Code の PostToolUse フックから呼ぶ（常に exit 0）
   uv run src/hub.py check-paths [--no-abs]                   切れたパスと、配布できない絶対パスを検出する
   uv run src/hub.py check-duplicates                         スキルの重複を検出する
 
-終了コード: 0 は問題なし、1 は差分・問題あり、2 はチェックや処理そのものの失敗。
+終了コード: 0 は問題なし、1 は差分・問題あり、2 はチェックや処理そのものの失敗（claude-hook だけは常に 0）。
 各サブコマンドの詳細は --help を見る。
 """
 import argparse
@@ -26,7 +27,7 @@ import sync
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='src/hub.py', description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest='cmd', required=True, metavar='{sync,import,register,install-hook,check-repo,claude-hook,check-paths,check-duplicates}')
+    sub = ap.add_subparsers(dest='cmd', required=True, metavar='{sync,import,register,install-hook,uninstall-hook,check-repo,claude-hook,check-paths,check-duplicates}')
 
     p = sub.add_parser('sync', help='配布する', description=sync.SYNC_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -55,6 +56,12 @@ def main(argv=None):
     p.add_argument('names', nargs='*', metavar='name')
     p.add_argument('--all', action='store_true', help='skills/repos.json のすべてのリポジトリ')
     p.set_defaults(func=register.cmd_install_hook)
+
+    p = sub.add_parser('uninstall-hook', help='pre-commit から skills-hub の部分を取り除く', description=register.UNINSTALL_DOC,
+                       formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('name', nargs='?')
+    p.add_argument('--path', help='登録を外したリポジトリなど、場所で指定する')
+    p.set_defaults(func=register.cmd_uninstall_hook)
 
     p = sub.add_parser('check-repo', help='リポジトリ側の未取り込みの変更を見る', description=sync.CHECK_REPO_DOC,
                        formatter_class=argparse.RawDescriptionHelpFormatter)
