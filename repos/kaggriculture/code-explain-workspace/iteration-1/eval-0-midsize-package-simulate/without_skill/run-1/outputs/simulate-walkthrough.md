@@ -1,6 +1,6 @@
 # `backend/src/simulate` 構造とエピソード実行の流れ
 
-対象: `/Users/user/project/kaggriculture/backend/src/simulate/`（10 モジュール + `jaxenv/` サブパッケージ、約 3,000 行）
+対象: `/Users/user/project/01_kaggle/kaggriculture/backend/src/simulate/`（10 モジュール + `jaxenv/` サブパッケージ、約 3,000 行）
 
 ---
 

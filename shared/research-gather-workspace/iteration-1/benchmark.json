@@ -1,7 +1,7 @@
 {
   "metadata": {
     "skill_name": "research-gather",
-    "skill_path": "/Users/user/project/research/.claude/skills/research-gather",
+    "skill_path": "/Users/user/project/02_research/.claude/skills/research-gather",
     "executor_model": "claude-opus-4-6",
     "analyzer_model": "claude-opus-4-6",
     "timestamp": "2026-03-29T12:00:00Z",

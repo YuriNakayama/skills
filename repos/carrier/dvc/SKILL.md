@@ -6,7 +6,7 @@ description: >
   DVC operations (status / dag / diff / metrics show / pull / push / fetch / add /
   commit) via AskUserQuestion, confirms riskier ones, and executes them with the
   repo-specific conventions baked in (uv via the backend venv, shared cache at
-  /Users/user/project/ptcg/.dvc/cache, S3 remote `s3` with AWS profile
+  /Users/user/project/01_kaggle/ptcg/.dvc/cache, S3 remote `s3` with AWS profile
   `ptcg`). Use whenever the user types /dvc or asks to run DVC commands such
   as "push my data", "pull the latest weights", "show DVC status", "what changed in
   the pipeline outputs", or "register this directory with DVC", and they have not
@@ -29,9 +29,9 @@ If the user already wrote a specific command (`dvc push`, `dvc status -c`), just
 These keep the commands working correctly without relitigating them every run:
 
 - DVC binary: `backend/.venv/bin/dvc` (the venv has `dvc[s3]` installed). Calling plain `dvc` from outside `backend/` may not be on PATH; the venv path is reliable from any cwd.
-- Run from the **repo root** (`/Users/user/project/ptcg.worktrees/<branch>/` or the main repo). `dvc.yaml` lives at the root.
+- Run from the **repo root** (`/Users/user/project/01_kaggle/ptcg.worktrees/<branch>/` or the main repo). `dvc.yaml` lives at the root.
 - Default remote is `s3` with profile `ptcg` (configured in `.dvc/config.local`). No `--remote` flag needed.
-- Shared cache is `/Users/user/project/ptcg/.dvc/cache` so multiple worktrees deduplicate — but **don't run two `dvc repro` / `dvc push` simultaneously** (lock contention). For pull/status the read concurrency is fine.
+- Shared cache is `/Users/user/project/01_kaggle/ptcg/.dvc/cache` so multiple worktrees deduplicate — but **don't run two `dvc repro` / `dvc push` simultaneously** (lock contention). For pull/status the read concurrency is fine.
 - `data/` contents are DVC-managed; only `*.dvc` stubs and `.gitignore` are committed to git. `dvc add` / `dvc commit` autostage stubs into git.
 
 ## Interaction flow

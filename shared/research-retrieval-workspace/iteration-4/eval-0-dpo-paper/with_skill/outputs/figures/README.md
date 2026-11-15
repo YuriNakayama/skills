@@ -15,7 +15,7 @@ WebFetchでダウンロードされた元画像ファイルは以下の場所に
 元画像のコピーコマンド:
 ```bash
 SRC="/Users/user/.claude/projects/-Users-user-project-research/399f18d5-bea3-4d71-9d94-e0325d06f9c1/tool-results"
-DST="/Users/user/project/research/.claude/skills/research-retrieval-workspace/iteration-4/eval-0-dpo-paper/with_skill/outputs/figures"
+DST="/Users/user/project/02_research/.claude/skills/research-retrieval-workspace/iteration-4/eval-0-dpo-paper/with_skill/outputs/figures"
 cp "$SRC/webfetch-1774779606673-eurufc.png" "$DST/fig-001-dpo-overview.png"
 cp "$SRC/webfetch-1774779609529-rxecpv.png" "$DST/fig-002-reward-kl-frontier.png"
 cp "$SRC/webfetch-1774779624540-pqz1mw.png" "$DST/fig-003-tldr-winrate.png"

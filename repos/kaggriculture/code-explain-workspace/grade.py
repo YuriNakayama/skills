@@ -18,7 +18,7 @@ from pathlib import Path
 ITER = Path(__file__).parent / (sys.argv[1] if len(sys.argv) > 1 else "iteration-1")
 TODAY = date.today().strftime("%Y%m%d")
 
-REPO = Path("/Users/user/project/kaggriculture")
+REPO = Path("/Users/user/project/01_kaggle/kaggriculture")
 
 
 def _docs(outputs: Path) -> list[Path]:

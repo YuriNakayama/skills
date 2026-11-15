@@ -1,6 +1,6 @@
 # rulebase/case7 エージェントの 1 ターン処理フロー
 
-対象コード: `/Users/user/project/kaggriculture/backend/pipeline/rulebase/case7/`
+対象コード: `/Users/user/project/01_kaggle/kaggriculture/backend/pipeline/rulebase/case7/`
 （`main.py` / `observe.py` / `tasks.py` / `market.py` / `config.py`）
 
 エンジンは 1 シーズン 720 ターン（24 ターン/日 × 30 日）のあいだ、毎ターン `agent(obs)` を 1 回だけ呼ぶ。case7 はそのたびに **「観測をパース → 今やるべき仕事を全部列挙 → ユニットに 1 件ずつ割り当て → 市場注文を優先度順に組む」** という同じ 4 段を回している。状態はターンをまたいで持たない（完全にステートレス、`obs` だけが入力）。

@@ -5,7 +5,7 @@ description: >
   reinforce repo. Triggered explicitly by the user with /dvc. Presents the available
   DVC operations (status / diff / pull / push / fetch / add) via AskUserQuestion, confirms riskier ones, and executes them with the
   repo-specific conventions baked in (uv via the backend venv, shared cache at
-  /Users/user/project/reinforce/.dvc/cache, S3 remote `s3` with AWS profile
+  /Users/user/project/05_reinforce/.dvc/cache, S3 remote `s3` with AWS profile
   `reinforce`). Use whenever the user types /dvc or asks to run DVC commands such
   as "push my data", "pull the latest weights", "show DVC status", "what changed in
   the pipeline outputs", or "register this directory with DVC", and they have not
@@ -28,10 +28,10 @@ If the user already wrote a specific command (`dvc push`, `dvc status -c`), just
 These keep the commands working correctly without relitigating them every run:
 
 - DVC binary: `backend/.venv/bin/dvc` (the venv has `dvc[s3]` installed). Calling plain `dvc` from outside `backend/` may not be on PATH; the venv path is reliable from any cwd.
-- Run from the **repo root** (`/Users/user/project/reinforce/.claude/worktrees/<branch>/` or the main repo). `.dvc/` lives at the root. There is **no `dvc.yaml`**: nothing is a DVC pipeline stage. Every tracked path is a `dvc add`ed directory with its own `<path>.dvc` stub — mainly one per training run (`data/output/models/<competition>/<family>/<case>/runs/<run_id>.dvc`, created by the GPU onstart or by hand).
+- Run from the **repo root** (`/Users/user/project/05_reinforce/.claude/worktrees/<branch>/` or the main repo). `.dvc/` lives at the root. There is **no `dvc.yaml`**: nothing is a DVC pipeline stage. Every tracked path is a `dvc add`ed directory with its own `<path>.dvc` stub — mainly one per training run (`data/output/models/<competition>/<family>/<case>/runs/<run_id>.dvc`, created by the GPU onstart or by hand).
 - If `.dvc/` does not exist yet, stop and tell the user the DVC remote is not set up (see `.claude/rules/infra.md` / `.claude/rules/data.md`); do not run `dvc init` on your own.
 - Default remote is `s3` with profile `reinforce` (configured in `.dvc/config.local`). No `--remote` flag needed.
-- Shared cache is `/Users/user/project/reinforce/.dvc/cache` so multiple worktrees deduplicate — but **don't run two `dvc push` simultaneously** (lock contention). For pull/status the read concurrency is fine.
+- Shared cache is `/Users/user/project/05_reinforce/.dvc/cache` so multiple worktrees deduplicate — but **don't run two `dvc push` simultaneously** (lock contention). For pull/status the read concurrency is fine.
 - `data/` contents are DVC-managed; only `*.dvc` stubs and `.gitignore` are committed to git. `dvc add` autostages the `.dvc` stub into git.
 
 ## Interaction flow

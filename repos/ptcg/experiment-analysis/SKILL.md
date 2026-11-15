@@ -80,7 +80,7 @@ Selection implementation:
 - "Long" = latest match where `total_turns >= quantile(0.75)`.
 - "Fastest loss" = latest match where `total_turns <= quantile(0.25) AND self_reward == -1`.
 - If `index.parquet` is missing or has no `total_turns` column, run `pick_match_pair.py` (see scripts section) to compute it from raw replays.
-- Worktree `data/` is a symlink; the actual replays live under `/Users/user/project/ptcg/data/...`. **Pass absolute paths to the script.**
+- Worktree `data/` is a symlink; the actual replays live under `/Users/user/project/01_kaggle/ptcg/data/...`. **Pass absolute paths to the script.**
 
 ### Phase 3 — Markdown conversion via Python script
 
@@ -160,7 +160,7 @@ Do not auto-spawn other skills. Suggest by name only.
 
 ```bash
 python3 .claude/skills/experiment-analysis/scripts/pick_match_pair.py \
-  --replays-dir /Users/user/project/ptcg/data/lake/selfplay/matches/replays \
+  --replays-dir /Users/user/project/01_kaggle/ptcg/data/lake/selfplay/matches/replays \
   --self-player-id 1 \
   --limit 200
 ```

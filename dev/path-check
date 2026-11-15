@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+# ハブ内の切れたパスと、配布できない絶対パスを検出する。
+#
+#   dev/path-check            全チェック（問題があれば exit 1、チェック自体が失敗したら exit 2）
+#   dev/path-check --no-abs   ファイル中の絶対パスのチェックを省く
+#
+# チェック内容:
+#   repos     repos.json の path が存在するか、shared/own のスキルがハブにあるか、
+#             repos/<repo>/ 配下が repos.json と一致しているか、shared/ に誰も使わないスキルが無いか
+#   symlink   ハブ・~/.claude/skills・各リポジトリの .claude/skills の切れたシンボリックリンク
+#   link      Markdown の相対リンク [text](path) と参照定義 [id]: path の参照先が存在するか
+#             （フェンスで囲んだコードブロックとインラインコードは除く）
+#   abs       ファイル中の絶対パス。
+#             - shared/ と repos/（リポジトリへコピー配布するスキル）: プロジェクト置き場（ハブの親、通常 ~/project）の
+#               パス（~/project、$HOME/project、${HOME}/project、/Users/<name>/project の形）と、/Users/<name>/・/home/<name>/
+#               で始まるパスは、存在しても不可。書き方は global/skill-share/references/portability.md。
+#               例示（<branch> など）が続いても、手前が具体的な絶対パスなので不可。
+#               既知の違反はこのスクリプト先頭の ALLOW に件数つきで書くと除外される（件数が合わなければエラー）。
+#             - それ以外（global/、bin/、README など）: プロジェクト置き場のパスが存在するか。
+#               無くても、それを含む git リポジトリ（ハブ以外）があれば、実行時に作られるパス（.dvc/cache、data/ など）とみなして通す。
+#             - 配布物以外では、例示（<...>、...、{...}、$VAR、* を含むもの）は例示の手前のディレクトリまでを確かめる。
+#               パス末尾の * は Markdown の強調とみなして外す（~/project/x* は ~/project/x として確かめる）。
+#             - *-workspace/ スキル（eval 記録）は対象外。
+#             - 検出しないもの: ../<別のリポジトリ> のような相対パスでの外部参照、/home/<name>（末尾の / が無いもの）、
+#               英数字に続く絶対パス（foo/Users/... は別の語とみなす。-I/Users/... のような短いオプションは検出する）。
+#             - /home/<name>/ の形は Web のパスなども拾う。${VAR}/home/... と $(cmd)/home/... は拾わない。
+#               <repo>/home/x/ のような例示の直後は、HTML タグ（<code>/Users/...）と見分けられないので拾う。
+#             - ALLOW の件数はパターンごとの合計で、同じ行の同じパスは 1 件に数える。入れ替え（1 件直して 1 件足す）は検出できない。
+#
+# macOS 標準の bash 3.2 で動くように書いている。jq が必要。
+
+set -u
+
+self=$0
+while [ -L "$self" ]; do                    # スクリプト自体へのリンクで起動されたら実体をたどる
+  l=$(readlink "$self")
+  case "$l" in /*) self=$l ;; *) self=$(dirname "$self")/$l ;; esac
+done
+HUB=$(cd "$(dirname "$self")/.." && pwd -P)
+CONFIG="$HUB/repos.json"
+
+# --- 既知の違反（修正待ち） ------------------------------------------------------
+# 配布するスキルの abs 違反のうち、すぐに直せないもの。1 行に「パターン 件数」（パターンは bash の case パターンで、
+# ハブからの相対パス。件数はそのパターンに当てはまる違反の合計）。# 以降は理由で、必ず書く（無いと exit 2）。
+# 件数が増えたら（新しい違反の混入）も減ったら（直したのに更新していない）もエラーにする。直し終えたら項目を消す。
+# 追加は skill-share の手順でユーザーの同意を得てから。この一覧の編集以外で検査を通すためにスクリプトを書き換えない。
+# 引用符つきヒアドキュメントなので、理由に ' や $ を書いてよい
+read -r -d '' ALLOW <<'END_ALLOW'
+repos/*/dvc/SKILL.md                  12   # 絶対パス。skill-share で $MAIN を使う形に直し、統合する
+repos/*/experiment-analysis/SKILL.md   6   # 同上
+END_ALLOW
+# ---------------------------------------------------------------------------------
+
+USER_SKILLS=${SKILLS_HUB_USER_DIR:-$HOME/.claude/skills}
+CHECK_ABS=1
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-abs) CHECK_ABS=0 ;;
+    -h|--help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+command -v jq >/dev/null || { echo "jq が必要です" >&2; exit 2; }
+jq -e . "$CONFIG" >/dev/null 2>&1 || { echo "repos.json を JSON として読めない" >&2; exit 2; }
+
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/path-check.XXXXXX") || { echo "一時ディレクトリを作れない" >&2; exit 2; }
+trap 'rm -rf "$TMP"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+errors=0
+allowed=0
+err() { # kind, location, message
+  printf '  %-8s %s: %s\n' "$1" "$2" "$3"
+  errors=$((errors + 1))
+}
+
+cd "$HUB" || exit 2
+
+# 追跡対象（git 管理下 + 未追跡で ignore されていないもの）のうち、実在する通常ファイル。NUL 区切り
+git ls-files -co --exclude-standard -z > "$TMP/ls" || { echo "git ls-files に失敗" >&2; exit 2; }
+: > "$TMP/files"
+while IFS= read -r -d '' f; do
+  [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\0' "$f" >> "$TMP/files"
+done < "$TMP/ls"
+
+# repos.json の path を sync.py と同じ規則で解決する（ハブからの相対、または絶対。~ は展開されない）
+repo_dir() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *) printf '%s/%s' "$HUB" "$1" ;;
+  esac
+}
+
+jq -r '.repos | keys[]' "$CONFIG" > "$TMP/repos"
+
+# --- repos -------------------------------------------------------------------
+echo "== repos.json"
+while IFS= read -r repo; do
+  rpath=$(jq -r --arg r "$repo" '.repos[$r].path' "$CONFIG")
+  case "$rpath" in
+    "~"*) err repos "repos.json:$repo" "path に ~ は使えない（sync.py は展開しない）: $rpath" ;;
+    *) [ -d "$(repo_dir "$rpath")" ] || err repos "repos.json:$repo" "path が存在しない: $rpath" ;;
+  esac
+
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    [ -d "shared/$s" ] || err repos "repos.json:$repo" "shared/$s が存在しない"
+  done <<EOF
+$(jq -r --arg r "$repo" '.repos[$r].shared[]?' "$CONFIG")
+EOF
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    [ -d "repos/$repo/$s" ] || err repos "repos.json:$repo" "repos/$repo/$s が存在しない"
+    jq -e --arg r "$repo" --arg s "$s" '.repos[$r].shared // [] | index($s)' "$CONFIG" >/dev/null \
+      && err repos "repos.json:$repo" "$s が shared と own の両方にある"
+  done <<EOF
+$(jq -r --arg r "$repo" '.repos[$r].own[]?' "$CONFIG")
+EOF
+  if [ -d "repos/$repo" ]; then
+    for d in repos/"$repo"/*/; do
+      [ -d "$d" ] || continue
+      s=$(basename "$d")
+      jq -e --arg r "$repo" --arg s "$s" '.repos[$r].own // [] | index($s)' "$CONFIG" >/dev/null \
+        || err repos "repos/$repo/$s" "repos.json の own に無い（配布されない）"
+    done
+  fi
+done < "$TMP/repos"
+
+for d in repos/*/; do
+  [ -d "$d" ] || continue
+  repo=$(basename "$d")
+  jq -e --arg r "$repo" '.repos | has($r)' "$CONFIG" >/dev/null \
+    || err repos "repos/$repo" "repos.json に登録されていない"
+done
+for d in shared/*/; do
+  [ -d "$d" ] || continue
+  s=$(basename "$d")
+  jq -e --arg s "$s" '[.repos[].shared // [] | index($s)] | any' "$CONFIG" >/dev/null \
+    || err repos "shared/$s" "どのリポジトリの shared にも無い（配布されない）"
+done
+
+# --- symlink -----------------------------------------------------------------
+echo "== symlinks"
+{
+  printf '%s\n' "$HUB" "$USER_SKILLS"
+  while IFS= read -r repo; do
+    rpath=$(jq -r --arg r "$repo" '.repos[$r].path' "$CONFIG")
+    case "$rpath" in "~"*) continue ;; esac
+    printf '%s/.claude/skills\n' "$(repo_dir "$rpath")"
+  done < "$TMP/repos"
+} > "$TMP/linkdirs"
+while IFS= read -r d; do
+  [ -d "$d" ] || continue
+  find "$d/" -type l ! -path '*/.git/*' -print0 2>/dev/null > "$TMP/links"
+  while IFS= read -r -d '' l; do
+    [ -e "$l" ] || err symlink "$l" "リンク先が無い: $(readlink "$l")"
+  done < "$TMP/links"
+done < "$TMP/linkdirs"
+
+# --- link --------------------------------------------------------------------
+echo "== markdown links"
+# 出力: <行番号>\t<リンク先>
+md_links() {
+  awk '
+    function fence_of(s,   m) {        # フェンス行なら "```" / "~~~" の列を返す
+      if (match(s, /^ {0,3}(`{3,}|~{3,})/)) { m = substr(s, RSTART, RLENGTH); sub(/^ */, "", m); return m }
+      return ""
+    }
+    {
+      f = fence_of($0)
+      if (open != "") {                 # 開いたのと同じ文字で、同じ長さ以上の行だけが閉じる
+        if (f != "" && substr(f, 1, 1) == substr(open, 1, 1) && length(f) >= length(open) && $0 ~ /^ {0,3}[`~]+[ \t]*$/) open = ""
+        next
+      }
+      if (f != "") { open = f; next }
+      line = $0
+      gsub(/``[^`]*(`[^`]+)*``/, "", line)   # インラインコード（二重バッククォート）
+      gsub(/`[^`]*`/, "", line)               # インラインコード
+      if (match(line, /^ {0,3}\[[^]^][^]]*\]:[ \t]*[^ \t]+/)) {   # 参照定義 [id]: path（脚注 [^1]: は除く）
+        t = substr(line, RSTART, RLENGTH); sub(/^[^]]*\]:[ \t]*/, "", t)
+        sub(/^</, "", t); sub(/>$/, "", t)
+        print NR "\t" t
+        next
+      }
+      while (match(line, /\]\(([^()]|\([^()]*\))+\)/)) {    # [x](path)。括弧 1 段まで
+        t = substr(line, RSTART + 2, RLENGTH - 3)
+        line = substr(line, RSTART + RLENGTH)
+        sub(/[ \t]+".*"$/, "", t)       # [x](path "title")
+        sub(/^</, "", t); sub(/>$/, "", t)
+        print NR "\t" t
+      }
+    }' "$1"
+}
+
+while IFS= read -r -d '' f; do
+  case "$f" in *.md|*.markdown) ;; *) continue ;; esac
+  dir=$(dirname "$f")
+  md_links "$f" > "$TMP/mdlinks"
+  while IFS="$(printf '\t')" read -r n t; do
+    [ -n "$t" ] || continue
+    case "$t" in
+      \#*|*://*|mailto:*|tel:*|data:*|*\{*|*\$*) continue ;;
+    esac
+    p=${t%%#*}; p=${p%%\?*}
+    [ -n "$p" ] || continue
+    p=$(printf '%s' "$p" | sed 's/%20/ /g')
+    case "$p" in
+      /*) target=$p ;;
+      "~"*) target=$HOME${p#\~} ;;
+      *) target=$dir/$p ;;
+    esac
+    [ -e "$target" ] || err link "$f:$n" "$t"
+  done < "$TMP/mdlinks"
+done < "$TMP/files"
+
+# --- abs ---------------------------------------------------------------------
+# 配布するスキル（shared/<skill>/... と repos/<repo>/<skill>/...）なら 0。*-workspace スキルは 2、それ以外は 1
+distributed() {
+  local rest skill
+  case "$1" in
+    shared/*) rest=${1#shared/} ;;
+    repos/*/*) rest=${1#repos/}; rest=${rest#*/} ;;
+    *) return 1 ;;
+  esac
+  skill=${rest%%/*}
+  [ "$skill" = "$rest" ] && return 1        # ディレクトリ直下のファイルはスキルではない
+  case "$skill" in *-workspace) return 2 ;; esac
+  return 0
+}
+
+if [ "$CHECK_ABS" = 1 ]; then
+  echo "== absolute paths"
+  projects=$(dirname "$HUB")
+  # ルートの表記ゆれ。正規表現を使わず固定文字列で探す
+  {
+    printf '%s\n' "$projects"
+    home_p=$(cd "$HOME" 2>/dev/null && pwd -P)
+    for h in "$HOME" "$home_p"; do
+      [ -n "$h" ] || continue
+      case "$projects" in
+        "$h"/*) rel=${projects#"$h"}; printf '%s\n' "~$rel" "\$HOME$rel" "\${HOME}$rel"; break ;;
+      esac
+    done
+  } > "$TMP/roots"
+
+  # 候補ファイル（テキストで、ルートか /Users/ か /home/ を含むもの）
+  xargs -0 grep -IlF -f "$TMP/roots" -e /Users/ -e /home/ -- < "$TMP/files" > "$TMP/cand" 2> "$TMP/grep.err"
+  if [ -s "$TMP/grep.err" ]; then cat "$TMP/grep.err" >&2; echo "grep に失敗" >&2; exit 2; fi
+  grep -vx 'dev/path-check' "$TMP/cand" > "$TMP/cand2"
+
+  # 出力: <line>\t<root の番号（0 は /Users/・/home/）>\t<root の後ろ（root 0 ならパス全体）>
+  # パスに使える文字は ASCII の英数字と ._-~/+@%= 。例示の判定のため <>{}$* も含めて切り出す
+  scan() {
+    awk -v rootsfile="$TMP/roots" '
+      BEGIN {
+        n = 0; while ((getline r < rootsfile) > 0) roots[++n] = r
+        pc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-~/+@%=<>{}$*"
+        wc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_."
+      }
+      function ispc(c) { return c != "" && index(pc, c) > 0 }
+      function iswc(c) { return c != "" && index(wc, c) > 0 }   # パスの手前にあると別の語の一部とみなす文字
+      # パスの手前の文字から、別の語の一部（= 絶対パスではない）かを判定する。
+      # -I/Users/... や -L/Users/... のようなコンパイラの短いオプションは絶対パスとみなす。
+      # /Users/・/home/ の判定（generic=1）では、${ROOT}/home/... と $(pwd)/home/... のように
+      # 変数展開・コマンド置換の閉じ（} と )）の直後も別の語の一部とみなす。> の直後（リダイレクト、HTML タグ、<repo>）は検出する
+      # p-1 の文字が、その手前の最後の op（"${" か "$("）から始まる展開の閉じか。spaces=0 なら中に空白を許さない
+      function closes(p, op, spaces,   pre, i, j) {
+        pre = substr($0, 1, p - 2)
+        i = 0; while ((j = index(substr(pre, i + 1), op)) > 0) i += j
+        if (i == 0) return 0
+        return spaces || substr(pre, i + length(op)) !~ /[ \t]/
+      }
+      function inword(p, generic,   b, bb) {
+        if (p <= 1) return 0
+        b = substr($0, p - 1, 1); bb = p > 2 ? substr($0, p - 2, 1) : ""
+        if (b ~ /[A-Za-z]/ && bb == "-" && (p <= 3 || !iswc(substr($0, p - 3, 1)))) return 0
+        if (generic && b == "}" && closes(p, "${", 0)) return 1
+        if (generic && b == ")" && closes(p, "$(", 1)) return 1
+        return iswc(b)
+      }
+      function take(s, i,   j) { j = i; while (j <= length(s) && ispc(substr(s, j, 1))) j++; return substr(s, i, j - i) }
+      {
+        for (k = 1; k <= n; k++) {
+          s = $0; off = 0
+          while ((i = index(s, roots[k])) > 0) {
+            pos = off + i; after = pos + length(roots[k])
+            nxt = substr($0, after, 1)
+            # ルートの直後は / か、パスに使えない文字（文末の . も可。project2 や project-archive は別の名前）
+            okn = (nxt == "/" || !ispc(nxt) || (nxt == "." && !ispc(substr($0, after + 1, 1))))
+            if (!inword(pos, 0) && okn)
+              print FNR "\t" k "\t" take($0, after)
+            off = pos; s = substr($0, off + 1)
+          }
+        }
+        # /Users/<name> は末尾の / が無くても拾う。/home/<name>/ は Web のパスと紛れるので / まで要る
+        s = $0; off = 0
+        while (match(s, /\/Users\/[A-Za-z0-9._-]+/)) {
+          pos = off + RSTART
+          if (!inword(pos, 1)) print FNR "\t0\t" take($0, pos)
+          off = pos + RLENGTH - 1; s = substr($0, off + 1)
+        }
+        s = $0; off = 0
+        while (match(s, /\/home\/[A-Za-z0-9._-]+\//)) {
+          pos = off + RSTART
+          if (!inword(pos, 1)) print FNR "\t0\t" take($0, pos)
+          off = pos + RLENGTH - 1; s = substr($0, off + 1)
+        }
+      }'
+  }
+  : > "$TMP/hits"
+  : > "$TMP/seen"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    distributed "$f"; kind=$?
+    [ "$kind" = 2 ] && continue
+    awk_out=$(scan < "$f" 2> "$TMP/awk.err") || { cat "$TMP/awk.err" >&2; echo "awk に失敗: $f" >&2; exit 2; }
+    if [ -s "$TMP/awk.err" ]; then cat "$TMP/awk.err" >&2; echo "awk が警告を出した: $f" >&2; exit 2; fi
+    [ -n "$awk_out" ] || continue
+    printf '%s\n' "$awk_out" | while IFS="$(printf '\t')" read -r n k rest; do
+      printf '%s\t%s\t%s\t%s\t%s\n' "$kind" "$f" "$n" "$k" "$rest"
+    done >> "$TMP/hits"
+  done < "$TMP/cand2"
+
+  # 既知の違反（先頭の ALLOW）
+  printf '%s\n' "$ALLOW" | sed -e 's/^[[:space:]]*//' -e '/^$/d' > "$TMP/allow.raw"
+  : > "$TMP/allow"
+  while IFS= read -r line; do
+    reason=
+    case "$line" in *'#'*) reason=${line#*#} ;; esac
+    reason=$(printf '%s' "$reason" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    body=${line%%#*}
+    read -r a c extra <<EOF2
+$body
+EOF2
+    case "$c" in ''|*[!0-9]*) echo "dev/path-check の ALLOW の書式が違う（パターン 件数 # 理由）: $line" >&2; exit 2 ;; esac
+    [ -z "$extra" ] || { echo "dev/path-check の ALLOW の書式が違う（件数の後ろは # 理由）: $line" >&2; exit 2; }
+    [ -n "$reason" ] || { echo "dev/path-check の ALLOW に理由が無い: $line" >&2; exit 2; }
+    grep -qxF "$a" "$TMP/allow" 2>/dev/null && { echo "dev/path-check の ALLOW に同じパターンが 2 回ある: $a" >&2; exit 2; }
+    printf '%s\n' "$a" >> "$TMP/allow"
+    printf '%s\t%s\n' "$a" "$c" >> "$TMP/allow.count"
+  done < "$TMP/allow.raw"
+  : > "$TMP/allow.used"
+
+  while IFS="$(printf '\t')" read -r kind f n k rest; do
+    # 例示（<branch>、...、{repo}、$VAR、*）。root の後ろだけを見る（$HOME 形式の root 自体の $ は例示ではない）。
+    # 配布物では手前が具体的な絶対パスなので違反のまま。存在チェックでは例示の手前のディレクトリまでを確かめる
+    while :; do case "$rest" in *\*) rest=${rest%\*} ;; *) break ;; esac; done   # 末尾の * は Markdown の強調
+    head=$rest
+    head=${head%%[\<\>\{\}\$\*]*}
+    case "$head" in *...*) head=${head%%...*} ;; esac
+    if [ "$head" != "$rest" ]; then
+      example=1
+      case "$head" in */*) head=${head%/*}/ ;; *) head= ;; esac
+    else
+      example=0
+      head=$(printf '%s' "$rest" | sed -E 's/\.+$//')   # 文末のピリオド
+    fi
+    [ "$example" = 1 ] && [ "$kind" != 0 ] && rest=$head || rest=$(printf '%s' "$rest" | sed -E 's/\.+$//')
+    if [ "$k" = 0 ]; then
+      p=$rest
+      # /Users/ 形式のルートそのものは root 側で拾うので、配布物以外ではここで扱わない
+      [ "$kind" = 0 ] || continue
+    else
+      p=$(sed -n "${k}p" "$TMP/roots")$rest
+    fi
+    if [ "$kind" = 0 ]; then
+      # root 形式と /Users/ 形式の二重報告を避ける
+      key="$f:$n:$p"
+      grep -qxF "$key" "$TMP/seen" 2>/dev/null && continue
+      printf '%s\n' "$key" >> "$TMP/seen"
+      pattern=
+      while IFS= read -r a; do
+        case "$f" in $a) pattern=$a; break ;; esac
+      done < "$TMP/allow"
+      if [ -n "$pattern" ]; then
+        printf '%s\n' "$pattern" >> "$TMP/allow.used"
+        allowed=$((allowed + 1))
+        continue
+      fi
+      err abs "$f:$n" "$p（配布するスキルに絶対パスは書けない）"
+      continue
+    fi
+    target=$projects$rest
+    [ -e "$target" ] && continue
+    # リポジトリ自体があれば、その中の .dvc/cache や data/、<repo>.worktrees/ など
+    # 実行時に作られる（git 管理外の）パスは切れているとみなさない
+    anc=$(printf '%s' "${target%/}" | sed -E 's#\.worktrees(/.*)?$##')
+    while [ ! -e "$anc" ]; do anc=$(dirname "$anc"); done
+    [ -d "$anc" ] || anc=$(dirname "$anc")
+    top=$(cd "$anc" && git rev-parse --show-toplevel 2>/dev/null) && top=$(cd "$top" && pwd -P)
+    [ -n "$top" ] && [ "$top" != "$HUB" ] && continue
+    err abs "$f:$n" "$p"
+  done < "$TMP/hits"
+
+  [ -f "$TMP/allow.count" ] && while IFS="$(printf '\t')" read -r a c; do
+    used=$(grep -cxF "$a" "$TMP/allow.used")
+    if [ "$used" = 0 ]; then
+      err allow "dev/path-check の ALLOW" "$a: 該当する違反が無い（直し終えたので項目を消す）"
+    elif [ "$used" -gt "$c" ]; then
+      err allow "dev/path-check の ALLOW" "$a: 違反が $c 件から $used 件に増えた（新しい絶対パスが入った）"
+    elif [ "$used" -lt "$c" ]; then
+      err allow "dev/path-check の ALLOW" "$a: 違反が $c 件から $used 件に減った（件数を $used に更新する）"
+    fi
+  done < "$TMP/allow.count"
+fi
+
+echo
+[ "$allowed" -gt 0 ] && echo "既知の違反 $allowed 件は dev/path-check の ALLOW により除外"
+if [ "$errors" -gt 0 ]; then
+  echo "NG: 問題のあるパスが $errors 件"
+  exit 1
+fi
+echo "OK: 問題のあるパスは無い"

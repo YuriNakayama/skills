@@ -47,8 +47,7 @@
         "research-clustering",
         "research-gather",
         "research-retrieval"
-      ],
-      "codex": false
+      ]
     },
     "ai-reception": {
       "path": "../00_old/ai-reception",
@@ -96,8 +95,7 @@
       "own": [
         "deploy",
         "pr"
-      ],
-      "codex": false
+      ]
     },
     "realtime": {
       "path": "../00_old/realtime",
@@ -144,8 +142,7 @@
         "research-retrieval",
         "research-retrieval-workspace",
         "skill-list"
-      ],
-      "codex": false
+      ]
     },
     "kaggriculture": {
       "path": "../01_kaggle/kaggriculture",
@@ -192,8 +189,7 @@
         "skill-list",
         "tdd",
         "test-coverage"
-      ],
-      "codex": false
+      ]
     },
     "ptcg": {
       "path": "../01_kaggle/ptcg",
@@ -248,11 +244,10 @@
         "replay-viewer",
         "research-retrieval-workspace",
         "skill-creator"
-      ],
-      "codex": true
+      ]
     },
     "carrier": {
-      "path": "../carrier",
+      "path": "../03_carrier",
       "shared": [
         "agent-browser",
         "checkpoint",
@@ -304,8 +299,7 @@
         "replay-viewer",
         "research-retrieval-workspace",
         "skill-creator"
-      ],
-      "codex": true
+      ]
     },
     "reinforce": {
       "path": "../05_reinforce",
@@ -319,8 +313,7 @@
         "experiment-hypothesize",
         "experiment-plan",
         "python-to-jax"
-      ],
-      "codex": false
+      ]
     }
   }
 }
