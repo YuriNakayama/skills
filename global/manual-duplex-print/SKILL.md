@@ -46,8 +46,9 @@ Double-sided output is done in two passes: fronts (odd pages), user reloads pape
      Never leave this judgment to the user.
    Wait for 「セットした」.
 6. **Pass 2 – backs** (even pages, **reverse order**, because the top sheet = last front is fed first):
-   `lp -d EPSON_EP_M552T_Series -o ColorModel=Gray -o cupsPrintQuality=High -P <explicit list, e.g. 22,20,…,2> file.pdf`
-   Use an explicit descending `-P` list; check with `lpstat -o` first.
+   `lp -d EPSON_EP_M552T_Series -o ColorModel=Gray -o cupsPrintQuality=High -o outputorder=reverse -P <range> -o page-set=even file.pdf`
+   CUPS always prints `-P` pages in document order, so a descending `-P` list does NOT reverse. Use `-o outputorder=reverse`.
+   Check with `lpstat -o` first.
 7. Report which pages are now paired and any sheet left with a blank back.
 
 ## Response style the user expects
