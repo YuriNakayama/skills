@@ -1,0 +1,10 @@
+[project]
+name = "skills-hub"
+version = "0.1.0"
+description = "Claude Code スキルの正本と、リポジトリへの配布ツール"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+# src/sync.py をスクリプトとして実行するだけで、パッケージとしてはインストールしない
+package = false
