@@ -32,7 +32,6 @@ uv run src/hub.py sync --repo research            # 1 リポジトリだけ
 uv run src/hub.py import research                 # research 側の変更と未管理スキルをすべて取り込む（未管理は own になるので、unmanaged があるときは名前を指定する）
 uv run src/hub.py import research pr              # 指定したスキルだけ取り込む（今の分類のまま。shared なら skills/shared/pr へ）
 uv run src/hub.py import research pr --to shared  # 共通化（skills/shared/pr へ。使っている全リポジトリに配布される）
-uv run src/hub.py import research pr --to own     # 共通化の解除（research にある今の内容を skills/repos/research/pr へ）
 uv run src/hub.py register foo ../01_kaggle/foo   # リポジトリを管理下に入れる（登録と pre-commit の設置。--shared a,b で配るスキルを指定）
 uv run src/hub.py check-repo --here               # 今いるリポジトリに、ハブへ取り込まれていない変更が無いか（pre-commit から使う）
 uv run src/hub.py check-paths                     # 切れたパスと、配布できない絶対パスの検査
@@ -44,7 +43,7 @@ uv run src/hub.py check-duplicates                # スキルの重複（層を�
 | 状態 | 意味 | 配布 | 取り込み |
 |---|---|---|---|
 | `new` | リポジトリにまだ無い | 配布する | 対象外 |
-| `hub` | ハブだけ変わった | 上書きする | 拒否（配布すればよい）。`--to own` での共通化の解除だけ可（旧版のまま own になる） |
+| `hub` | ハブだけ変わった | 上書きする | 拒否（配布すればよい） |
 | `repo` | リポジトリだけ変わった | スキップ | 取り込む |
 | `both` | 両方変わった | スキップ | `--force` が必要 |
 | `unknown` | 差分があり、記録がない | スキップ | `--force` が必要 |
@@ -80,9 +79,9 @@ worktree の中でコミットが止まったときは、取り込み（`import`
 
 - 新しいスキルは原則ここで作る。全プロジェクト用なら `skills/global/`、特定リポジトリ用なら `skills/repos/<repo>/` に置き、`repos.json` に追記して `uv run src/hub.py sync`。
 - リポジトリ側で編集・作成したスキルは `uv run src/hub.py import <repo>`（`unmanaged` があるときはスキル名を指定する）でハブに取り込み、`git diff` で確認してからコミットする。取り込みは今の分類を保つ（shared のスキルを取り込むと、使っている全リポジトリに配布される）。
-- 共通化は `import <repo> <name> --to shared`、解除は `import <repo> <name> --to own`。改変版の統合は `skills/shared/` に直接書いて `repos.json` を移す。
-- `skills/shared/` と `skills/repos/` のスキルには `~/project/...` などの絶対パスを書かない（コピー先のクローン・worktree・クラウドで壊れるため）。`skills/global/` は例外。書き方は `skills/global/skill-share/references/portability.md`。
-- 配布前に `uv run src/hub.py check-paths` を通す。修正待ちの既知の違反は `src/path_check.py` 先頭の `ALLOW` に件数と理由を添えて載せ、直したら消す（件数が合わなければエラー）。
+- **1 つの名前には 1 つの中身。** 層をまたいだ同名も、同名の別内容も作らない（`check-duplicates`）。環境ごとの値の違いは外に出して統合し、振る舞いの違いは別の名前に分ける（例: `experiment*` と `rl-experiment*`）。同じ名前のまま 1 つのリポジトリだけ別の版にする取り込みは `sync.py` が拒否する。改変版の統合は `skills/shared/` に直接書いて `repos.json` を移す（手順は skill-share）。
+- **配布するスキルに絶対パスを書かない。** `skills/shared/` と `skills/repos/` のスキルには `~/project/...` などの絶対パスを書かない（コピー先のクローン・worktree・クラウドで壊れるため）。`skills/global/` は例外。書き方は `skills/global/skill-share/references/portability.md`。
+- **例外は設けない。** 許可リストは無い。`uv run src/hub.py sync` は配布の前に `check-paths` と `check-duplicates` を実行し、どちらかが失敗したら配布しない。直せない違反のあるスキルは、直すまで配布しない。
 - 配布後は各リポジトリで `.claude/skills` の変更をコミットする。
 - `~/.claude/skills/synced` と `learned` は Claude アプリが管理するので触らない。
 
@@ -91,14 +90,5 @@ worktree の中でコミットが止まったときは、取り込み（`import`
 | スキル | 役割 |
 |---|---|
 | `skill-sync` | 取り込みと配布（分類は変えない） |
-| `skill-share` | 共通化・非共通化・配布の停止、改変版の統合、移植性（絶対パスなど）の修正 |
+| `skill-share` | 共通化・別名への分割・配布の停止、改変版の統合、移植性（絶対パスなど）の修正 |
 | `skill-register` | リポジトリを管理下に入れる（shared の選定、登録、pre-commit、振り分けのまとめ、コミット） |
-
-## 未整理の課題
-
-移行時点の各リポジトリの中身をそのまま取り込んだため、同じスキルの改変版が `skills/repos/` に残っている。統合する場合は差分を見て `skills/shared/` を更新し、`own` から外す。
-
-- research 系（clustering / gather / retrieval）: research 版（7 月改訂）が最新。realtime も独自版。
-- experiment 系・dvc: reinforce・kaggriculture・ptcg（carrier と同一）の 3 系統に分岐。reinforce が最新。
-- `skills/repos/realtime/research-gather` は SKILL.md が無く evals だけ。移行前から壊れている。
-- carrier は ptcg の丸コピーで git 管理外。`skills/repos/carrier` の dvc・experiment-analysis は ptcg（`01_kaggle/ptcg`）を指したままで、`03_carrier` 自身には `.dvc` も `backend/` も無い。

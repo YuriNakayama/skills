@@ -8,11 +8,13 @@
 ハブ・リポジトリ・そのハッシュを比べて、どちらが変わったかを判定する:
   new       リポジトリにまだ無い         -> sync でコピーする
   same      同じ                         -> 何もしない（--check にも出ない）
-  hub       ハブだけ変わった             -> sync で上書きする（import は --to own での非共通化だけ可）
+  hub       ハブだけ変わった             -> sync で上書きする（import は拒否）
   repo      リポジトリだけ変わった       -> sync はスキップ、import で取り込む
   both      両方変わった                 -> sync も import も --force が要る
   unknown   差分があり記録が無い         -> sync も import も --force が要る
   unmanaged リポジトリにだけある         -> import でそのリポジトリの own として取り込む
+
+sync（--check 以外）は配布の前に check-paths と check-duplicates を実行し、どちらかが失敗したら配布しない。
 """
 import argparse
 import os
@@ -20,8 +22,8 @@ import shutil
 import subprocess
 import sys
 
-from common import (HUB, MANIFEST, SKILLS, USER_SKILLS, load_cfg, mirror, repo_root, save_cfg,
-                    sources, tree_hash)
+from common import (HUB, MANIFEST, SKILLS, USER_SKILLS, list_skills, load_cfg, mirror, repo_root,
+                    save_cfg, sources, tree_hash)
 
 SYNC_DOC = __doc__
 IMPORT_DOC = """リポジトリ側の変更・未管理のスキルをハブへ取り込む。
@@ -29,8 +31,11 @@ IMPORT_DOC = """リポジトリ側の変更・未管理のスキルをハブへ�
   uv run src/hub.py import X               X の変更（repo / both / unknown）と未管理のスキルをすべて取り込む
   uv run src/hub.py import X a b           a と b だけ取り込む（今の分類 shared / own のまま）
   uv run src/hub.py import X a --to shared skills/shared/ に取り込む（使っている全リポジトリに配布される）
-  uv run src/hub.py import X a --to own    skills/repos/X/ に取り込む（X だけ非共通化する）
+  uv run src/hub.py import X a --to own    skills/repos/X/ に取り込む
   uv run src/hub.py import X a --force     ハブ側も変わっていても取り込む
+
+1 つの名前には 1 つの中身（規則）。取り込む先以外（global・shared・ほかのリポジトリの own）に
+同じ名前のスキルがあれば、--force でも取り込まない。振る舞いの違う版は skill-share で別の名前に分ける。
 """
 
 
@@ -161,11 +166,31 @@ def sync_global(check):
     return drift
 
 
+def gate():
+    """配布の前の関門: check-paths と check-duplicates。どちらかが 0 以外ならその終了コードを返す（例外は無い）。"""
+    import duplicated_skill
+    import path_check
+    ns = argparse.Namespace(no_abs=False)
+    rc = path_check.main(ns)
+    print()
+    rd = duplicated_skill.main(ns)
+    print()
+    worst = max(rc, rd)
+    if worst:
+        print(f'配布しない: 配布の前の検査が失敗した（check-paths exit {rc}、check-duplicates exit {rd}）。'
+              '直し方は skills/global/skill-share を参照', file=sys.stderr)
+    return worst
+
+
 def cmd_sync(a):
     cfg = load_cfg()['repos']
     if a.repo and a.repo not in cfg:
         print(f'unknown repo: {a.repo}', file=sys.stderr)
         return 2
+    if not a.check:     # 実際に配布するときだけ。--check は状態を見るだけなので検査しない
+        rc = gate()
+        if rc:
+            return rc
     total = 0
     if not a.repo:
         print('== global (~/.claude/skills)')
@@ -364,10 +389,8 @@ def cmd_import(a):
             if state == 'same' and a.to is None:
                 print(f'  same     {n}  (nothing to import)')
                 continue
-            # hub: リポジトリ側は前回配布のまま。--to own（そのリポジトリだけ旧版で非共通化）だけ許す
-            if state == 'hub' and not (a.to == 'own' and n in e.get('shared', [])):
-                print(f'  hub      {n}  (only the hub changed. Run sync instead of import'
-                      f'{"; to keep the old version for this repo only, use --to own" if n in e.get("shared", []) else ""})')
+            if state == 'hub':     # リポジトリ側は前回配布のまま。取り込むものは無い
+                print(f'  hub      {n}  (only the hub changed. Run sync instead of import)')
                 failed += 1
                 continue
             if state in ('both', 'unknown') and not a.force:
@@ -376,6 +399,16 @@ def cmd_import(a):
                 continue
         # --to を省いたら今の分類を保つ（shared のスキルは shared に、それ以外は own に取り込む）
         to = a.to or ('shared' if n in e.get('shared', []) else 'own')
+        # 1 つの名前には 1 つの中身: 取り込む先以外に同じ名前があれば取り込まない（--force でも）。
+        # shared に取り込むとき、このリポジトリの own の版は取り込みで消えるので数えない
+        here = 'shared' if to == 'shared' else f'repos/{a.repo}'
+        others = [loc for loc, name, _ in list_skills()
+                  if name == n and loc != here and not (to == 'shared' and loc == f'repos/{a.repo}')]
+        if others:
+            print(f'  conflict {n}  (the name already exists in {", ".join("skills/" + o for o in others)}. '
+                  f'One name, one content: merge the variants or rename the skill (see skill-share))')
+            failed += 1
+            continue
         if to == 'own':
             dest = os.path.join(SKILLS, 'repos', a.repo, n)
             e['shared'] = [x for x in e.get('shared', []) if x != n]

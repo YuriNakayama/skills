@@ -1,5 +1,4 @@
 """切れたパスと、配布できない絶対パスの検査（uv run src/hub.py check-paths）。"""
-import fnmatch
 import json
 import os
 import re
@@ -25,7 +24,7 @@ DOC = """ハブ内の切れたパスと、配布できない絶対パスを検�
               /Users/<name>・/home/<name>/ で始まるパスは、存在しても不可。
               書き方は skills/global/skill-share/references/portability.md。
               例示（<branch> など）が続いても、手前が具体的な絶対パスなので不可。
-              既知の違反は src/path_check.py 先頭の ALLOW に件数つきで書くと除外される（件数が合わなければエラー）。
+              例外（許可リスト）は無い。直すまでそのスキルは配布できない。
             - それ以外（skills/global/、src/、README など）: プロジェクト置き場のパスが存在するか。
               無くても、それを含む git リポジトリ（ハブ以外）があれば、実行時に作られるパス（.dvc/cache、data/ など）とみなして通す。
             - 配布物以外では、例示（<...>、...、{...}、$VAR、* を含むもの）は例示の手前のディレクトリまでを確かめる。
@@ -35,18 +34,8 @@ DOC = """ハブ内の切れたパスと、配布できない絶対パスを検�
               英数字に続く絶対パス（foo/Users/... は別の語とみなす。-I/Users/... のような短いオプションは検出する）。
             - /home/<name>/ の形は Web のパスなども拾う。${VAR}/home/... と $(cmd)/home/... は拾わない。
               <repo>/home/x/ のような例示の直後は、HTML タグ（<code>/Users/...）と見分けられないので拾う。
-            - ALLOW の件数はパターンごとの合計で、同じ行の同じパスは 1 件に数える。入れ替え（1 件直して 1 件足す）は検出できない。
 """
 
-# --- 既知の違反（修正待ち） ------------------------------------------------------
-# 配布するスキルの abs 違反のうち、すぐに直せないもの。1 行に「パターン 件数  # 理由」。
-# パターンはハブからの相対パスに対する fnmatch のパターン（bash の case と同じく * は / にも一致する）。
-# 件数はそのパターンに当てはまる違反の合計。# 以降の理由は必ず書く（無いと exit 2）。
-# 件数が増えたら（新しい違反の混入）も減ったら（直したのに更新していない）もエラーにする。直し終えたら項目を消す。
-# 追加は skill-share の手順でユーザーの同意を得てから。この一覧の編集以外で検査を通すためにスクリプトを書き換えない。
-ALLOW = r"""
-"""
-ALLOW_LABEL = 'src/path_check.py の ALLOW'
 SELF = 'src/path_check.py'      # 自分自身は abs の検査から外す（例示や正規表現を含むため）
 
 PC = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-~/+@%=<>{}$*')   # パスとして切り出す文字
@@ -311,27 +300,6 @@ def scan(text, roots):
     return out
 
 
-def parse_allow():
-    """[(パターン, 件数)] を返す。書式が違えば Fail。"""
-    out = []
-    for line in ALLOW.split('\n'):
-        line = line.lstrip()
-        if not line:
-            continue
-        body, sep, reason = line.partition('#')
-        fields = body.split()
-        if len(fields) < 2 or not fields[1].isdigit() or not fields[1].isascii():
-            raise Fail(f'{ALLOW_LABEL} の書式が違う（パターン 件数 # 理由）: {line}')
-        if len(fields) > 2:
-            raise Fail(f'{ALLOW_LABEL} の書式が違う（件数の後ろは # 理由）: {line}')
-        if not reason.strip():
-            raise Fail(f'{ALLOW_LABEL} に理由が無い: {line}')
-        if any(a == fields[0] for a, _ in out):
-            raise Fail(f'{ALLOW_LABEL} に同じパターンが 2 回ある: {fields[0]}')
-        out.append((fields[0], int(fields[1])))
-    return out
-
-
 def git_toplevel(d):
     r = subprocess.run(['git', 'rev-parse', '--show-toplevel'], cwd=d, capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout.strip():
@@ -345,11 +313,8 @@ def strip_dots(s):
 
 def check_abs(files, err):
     print('== absolute paths')
-    allow = parse_allow()
     projects = os.path.dirname(HUB)
     roots = roots_of(projects)
-    used = {a: 0 for a, _ in allow}
-    allowed = 0
     seen = set()
     for f in files:
         if f == SELF:
@@ -385,11 +350,6 @@ def check_abs(files, err):
                 if key in seen:
                     continue
                 seen.add(key)
-                pattern = next((a for a, _ in allow if fnmatch.fnmatchcase(f, a)), None)
-                if pattern is not None:
-                    used[pattern] += 1
-                    allowed += 1
-                    continue
                 err('abs', f'{f}:{n}', f'{p}（配布するスキルに絶対パスは書けない）')
                 continue
             target = projects + rest
@@ -407,15 +367,6 @@ def check_abs(files, err):
             if top and top != HUB:
                 continue
             err('abs', f'{f}:{n}', p)
-    for a, c in allow:
-        u = used[a]
-        if u == 0:
-            err('allow', ALLOW_LABEL, f'{a}: 該当する違反が無い（直し終えたので項目を消す）')
-        elif u > c:
-            err('allow', ALLOW_LABEL, f'{a}: 違反が {c} 件から {u} 件に増えた（新しい絶対パスが入った）')
-        elif u < c:
-            err('allow', ALLOW_LABEL, f'{a}: 違反が {c} 件から {u} 件に減った（件数を {u} に更新する）')
-    return allowed
 
 
 # ---------- entry ----------
@@ -439,13 +390,12 @@ def main(a):
         check_repos(cfg, err)
         check_symlinks(cfg, err)
         check_links(files, err)
-        allowed = check_abs(files, err) if not a.no_abs else 0
+        if not a.no_abs:
+            check_abs(files, err)
     except Fail as e:
         print(str(e), file=sys.stderr)
         return 2
     print()
-    if allowed:
-        print(f'既知の違反 {allowed} 件は {ALLOW_LABEL} により除外')
     if errors:
         print(f'NG: 問題のあるパスが {errors} 件')
         return 1

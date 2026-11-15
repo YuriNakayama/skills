@@ -10,9 +10,9 @@ description: Keep the skills hub (~/project/98_skills) and each repo's .claude/s
 
 | やること | やらないこと（skill-share に渡す） |
 |---|---|
-| ハブの変更をリポジトリへ配布 | shared ⇄ own の分類変更（共通化・非共通化）、配布の停止 |
+| ハブの変更をリポジトリへ配布 | shared ⇄ own の分類変更（共通化・別名への分割）、配布の停止 |
 | リポジトリでの変更・新規スキルを、今の分類のままハブへ取り込み | 改変版どうしの統合 |
-| 衝突（both / unknown）を見せてユーザーに選ばせる | 絶対パスなど移植性の問題の修正、`uv run src/hub.py check-paths` の `ALLOW` の編集 |
+| 衝突（both / unknown）を見せてユーザーに選ばせる | 絶対パスなど移植性の問題の修正、重複（`check-duplicates`）の解消 |
 
 ## 構成（前提知識）
 
@@ -39,10 +39,11 @@ uv run src/hub.py check-paths
 
 `--check` は差のあるスキルだけを表示する（表示されないスキルは `same`）。
 
-`uv run src/hub.py check-paths` が exit 1 なら配布しない。
+`uv run src/hub.py check-paths` と `uv run src/hub.py check-duplicates` のどちらかが exit 1 なら配布しない（`sync` も配布の前に自分で 2 つを実行し、失敗したら配布しない）。終了コードは出力の最後の行ではなく、コマンドの終了コードそのもので確かめる。
 - `repos` / `symlink` / `link` の行: 指摘どおり直す（`repos.json`、切れたリンクなど）。直し方が分類の変更になるなら skill-share に渡す。
 - `abs` の行（配布するスキルに絶対パスがある）: skill-share の `references/portability.md` に沿って直す必要がある。ユーザーに伝えて skill-share に渡す。
-- 修正待ちの既知の違反は `src/path_check.py` 先頭の `ALLOW` に件数つきで載っていて除外される（「既知の違反 N 件」と表示される）。それらがあっても配布してよい。`allow` の行（件数が増えた・減った・該当が無い）は、どれも skill-share に渡す（増えたなら新しい違反の混入、減った・無いなら `ALLOW` の更新）。skill-sync は `ALLOW` を編集しない。
+- `check-duplicates` の行（同名の別内容、層をまたいだ同名など）: 統合するか別の名前に分ける必要がある。skill-share に渡す。
+- 例外（許可リスト）は無い。違反が残っている間は配布しない。
 
 exit 2 はチェック自体の失敗（jq が無い、一時ディレクトリを作れないなど）。原因を直して再実行する。
 
@@ -125,4 +126,4 @@ drift が残るのが、ユーザーが残すと決めた `unmanaged`（配布�
 - リポジトリ側の `.claude/skills` を直接編集する（直すのはハブ。リポジトリで直してしまったら取り込む）。
 - どちらを残すかユーザーが決める前に `--force` を使う。
 - `import` に `--to` を付ける、`repos.json` の `shared` / `own` を書き換える（分類の変更は skill-share）。
-- `uv run src/hub.py check-paths` を書き換えて（`ALLOW` に項目を足すことも含む）検査を通す。
+- `src/` の検査を書き換えて検査を通す。
