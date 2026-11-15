@@ -1,0 +1,70 @@
+{
+  "expectations": [
+    {
+      "text": "Output document exists as a .md file",
+      "passed": true,
+      "evidence": "found: ['20260811_jaxenv.md']"
+    },
+    {
+      "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+      "passed": true,
+      "evidence": "matching: ['20260811_jaxenv.md']"
+    },
+    {
+      "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+      "passed": true,
+      "evidence": "tree=True, inventory=True, steps=True"
+    },
+    {
+      "text": "Class/method inventory is a table including responsibility and input/output columns",
+      "passed": true,
+      "evidence": "found a table header with責務/responsibility + input columns"
+    },
+    {
+      "text": "Processing steps are numbered and cite specific file:line anchors",
+      "passed": true,
+      "evidence": "56 file:line anchors (e.g. ['state.py:115', 'benchmark.py:122', 'env.py:15'])"
+    },
+    {
+      "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+      "passed": true,
+      "evidence": "scope=True, size=True, date=True, sha=True"
+    },
+    {
+      "text": "A separate terminal summary was produced (terminal_summary.md)",
+      "passed": true,
+      "evidence": "2620 bytes"
+    },
+    {
+      "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+      "passed": true,
+      "evidence": "repo docs/ clean"
+    },
+    {
+      "text": "Document opens with a 用語 (glossary) table defining identifiers and domain terms",
+      "passed": true,
+      "evidence": "glossary section=True, ~18 terms defined"
+    },
+    {
+      "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+      "passed": true,
+      "evidence": "mermaid=1, table rows=137, code blocks=6 -> 3/3 formats"
+    },
+    {
+      "text": "Terminal summary reports a self-review pass and what it changed",
+      "passed": true,
+      "evidence": "self-review line present"
+    },
+    {
+      "text": "Scope slug in the filename reflects the resolved scope (jaxenv/jax_env/jax)",
+      "passed": true,
+      "evidence": "matched ['jaxenv', 'jax']"
+    }
+  ],
+  "summary": {
+    "passed": 12,
+    "failed": 0,
+    "total": 12,
+    "pass_rate": 1.0
+  }
+}

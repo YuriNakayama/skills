@@ -1,0 +1,22 @@
+{
+  "eval_id": 0,
+  "eval_name": "midsize-package-simulate",
+  "prompt": "backend/src/simulate の実装を把握したいです。エピソード実行まわりがどういう構造でどう動いてるのか、順を追って整理してください。",
+  "assertions": [
+    "Output document exists as a .md file",
+    "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+    "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+    "Directory tree annotates each entry with a one-line description (not a bare tree dump)",
+    "Class/method inventory is a table including responsibility and input/output columns",
+    "Processing steps are numbered and cite specific file:line anchors",
+    "Header block records scope paths, file/line counts, analysis date, and commit sha",
+    "A separate terminal summary was produced (terminal_summary.md)",
+    "Document does not write into the repo's docs/ tree (no repo pollution)",
+    "Covers episode.py, matrix.py and config.py — the core of episode execution",
+    "Identifies entry points (e.g. __main__ / __init__ exports)",
+    "Notes the crash/timeout/invalid-action detection behaviour that the engine otherwise hides",
+    "Document opens with a 用語 (glossary) table defining identifiers and domain terms",
+    "Uses visual formats beyond prose (mermaid diagrams, tables, skeleton code)",
+    "Terminal summary reports a self-review pass and what it changed"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "expectations": [
+    {
+      "text": "Output document exists as a .md file",
+      "passed": true,
+      "evidence": "found: ['jaxenv_explained.md']"
+    },
+    {
+      "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+      "passed": false,
+      "evidence": "names were ['jaxenv_explained.md']"
+    },
+    {
+      "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+      "passed": true,
+      "evidence": "tree=True, inventory=True, steps=True"
+    },
+    {
+      "text": "Class/method inventory is a table including responsibility and input/output columns",
+      "passed": false,
+      "evidence": "49 table rows, none with both columns"
+    },
+    {
+      "text": "Processing steps are numbered and cite specific file:line anchors",
+      "passed": false,
+      "evidence": "1 file:line anchors (e.g. ['core.py:626'])"
+    },
+    {
+      "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+      "passed": false,
+      "evidence": "scope=True, size=False, date=True, sha=True"
+    },
+    {
+      "text": "A separate terminal summary was produced (terminal_summary.md)",
+      "passed": true,
+      "evidence": "2377 bytes"
+    },
+    {
+      "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+      "passed": true,
+      "evidence": "repo docs/ clean"
+    },
+    {
+      "text": "Scope slug in the filename reflects the resolved scope (jaxenv/jax_env/jax)",
+      "passed": true,
+      "evidence": "matched ['jaxenv', 'jax']"
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 4,
+    "total": 9,
+    "pass_rate": 0.5556
+  }
+}

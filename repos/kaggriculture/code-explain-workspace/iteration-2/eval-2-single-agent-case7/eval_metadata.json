@@ -1,0 +1,22 @@
+{
+  "eval_id": 2,
+  "eval_name": "single-agent-case7",
+  "prompt": "rulebase/case7 のエージェントが毎ターン何をしてるのか知りたい。処理の流れを追ってドキュメントにして。",
+  "assertions": [
+    "Output document exists as a .md file",
+    "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+    "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+    "Directory tree annotates each entry with a one-line description (not a bare tree dump)",
+    "Class/method inventory is a table including responsibility and input/output columns",
+    "Processing steps are numbered and cite specific file:line anchors",
+    "Header block records scope paths, file/line counts, analysis date, and commit sha",
+    "A separate terminal summary was produced (terminal_summary.md)",
+    "Document does not write into the repo's docs/ tree (no repo pollution)",
+    "Traces the per-turn agent() flow in order, matching the user's actual question",
+    "Documents branching / conditional behaviour within a turn",
+    "Describes the core state objects the agent reads and returns",
+    "Document opens with a 用語 (glossary) table defining identifiers and domain terms",
+    "Uses visual formats beyond prose (mermaid diagrams, tables, skeleton code)",
+    "Terminal summary reports a self-review pass and what it changed"
+  ]
+}

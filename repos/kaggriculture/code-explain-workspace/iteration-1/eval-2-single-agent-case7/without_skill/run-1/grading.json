@@ -1,0 +1,50 @@
+{
+  "expectations": [
+    {
+      "text": "Output document exists as a .md file",
+      "passed": true,
+      "evidence": "found: ['case7_turn_flow.md']"
+    },
+    {
+      "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+      "passed": false,
+      "evidence": "names were ['case7_turn_flow.md']"
+    },
+    {
+      "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+      "passed": true,
+      "evidence": "tree=True, inventory=True, steps=True"
+    },
+    {
+      "text": "Class/method inventory is a table including responsibility and input/output columns",
+      "passed": false,
+      "evidence": "47 table rows, none with both columns"
+    },
+    {
+      "text": "Processing steps are numbered and cite specific file:line anchors",
+      "passed": true,
+      "evidence": "12 file:line anchors (e.g. ['main.py:47', 'main.py:58', 'observe.py:87'])"
+    },
+    {
+      "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+      "passed": false,
+      "evidence": "scope=True, size=False, date=False, sha=False"
+    },
+    {
+      "text": "A separate terminal summary was produced (terminal_summary.md)",
+      "passed": true,
+      "evidence": "2920 bytes"
+    },
+    {
+      "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+      "passed": true,
+      "evidence": "repo docs/ clean"
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 3,
+    "total": 8,
+    "pass_rate": 0.625
+  }
+}

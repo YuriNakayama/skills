@@ -1,0 +1,22 @@
+{
+  "eval_id": 1,
+  "eval_name": "vague-scope-jaxenv",
+  "prompt": "JAX の環境まわりのコードを読み解いて解説ドキュメントにまとめて",
+  "assertions": [
+    "Output document exists as a .md file",
+    "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+    "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+    "Directory tree annotates each entry with a one-line description (not a bare tree dump)",
+    "Class/method inventory is a table including responsibility and input/output columns",
+    "Processing steps are numbered and cite specific file:line anchors",
+    "Header block records scope paths, file/line counts, analysis date, and commit sha",
+    "A separate terminal summary was produced (terminal_summary.md)",
+    "Document does not write into the repo's docs/ tree (no repo pollution)",
+    "Resolved the unstated scope to backend/src/simulate/jaxenv and stated how",
+    "Covers env.py and state.py",
+    "Scope slug in the filename reflects the resolved scope (e.g. jaxenv)",
+    "Document opens with a 用語 (glossary) table defining identifiers and domain terms",
+    "Uses visual formats beyond prose (mermaid diagrams, tables, skeleton code)",
+    "Terminal summary reports a self-review pass and what it changed"
+  ]
+}

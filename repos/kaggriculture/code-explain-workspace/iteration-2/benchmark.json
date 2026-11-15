@@ -1,0 +1,513 @@
+{
+  "metadata": {
+    "skill_name": "code-explain",
+    "skill_path": "<path/to/skill>",
+    "executor_model": "<model-name>",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-08-11T05:00:03Z",
+    "evals_run": [
+      0,
+      1,
+      2
+    ],
+    "runs_per_configuration": 3
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.8182,
+        "passed": 9,
+        "failed": 2,
+        "total": 11,
+        "time_seconds": 271.5,
+        "tokens": 76062,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_simulate.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_simulate.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "67 file:line anchors (e.g. ['__main__.py:65', 'config.py:53', 'config.py:89'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": true,
+          "evidence": "2286 bytes"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": false,
+          "evidence": "glossary section=False, ~0 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": true,
+          "evidence": "mermaid=1, table rows=76, code blocks=4 -> 3/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": false,
+          "evidence": "no self-review line in terminal_summary.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.75,
+        "passed": 9,
+        "failed": 3,
+        "total": 12,
+        "time_seconds": 264.4,
+        "tokens": 68168,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_jaxenv.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_jaxenv.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "22 file:line anchors (e.g. ['state.py:124', 'state.py:39', 'env.py:420'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": true,
+          "evidence": "2489 bytes"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": false,
+          "evidence": "glossary section=False, ~0 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": false,
+          "evidence": "mermaid=0, table rows=67, code blocks=5 -> 2/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": false,
+          "evidence": "no self-review line in terminal_summary.md"
+        },
+        {
+          "text": "Scope slug in the filename reflects the resolved scope (jaxenv/jax_env/jax)",
+          "passed": true,
+          "evidence": "matched ['jaxenv', 'jax']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.8182,
+        "passed": 9,
+        "failed": 2,
+        "total": 11,
+        "time_seconds": 703.9,
+        "tokens": 73170,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_rulebase_case7.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_rulebase_case7.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "35 file:line anchors (e.g. ['observe.py:17', 'observe.py:45', 'tasks.py:71'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": true,
+          "evidence": "3256 bytes"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": false,
+          "evidence": "glossary section=False, ~0 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": true,
+          "evidence": "mermaid=1, table rows=85, code blocks=8 -> 3/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": false,
+          "evidence": "no self-review line in terminal_summary.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.8182,
+        "passed": 9,
+        "failed": 2,
+        "total": 11,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_simulate.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_simulate.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "128 file:line anchors (e.g. ['config.py:53', 'config.py:89', 'episode.py:53'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": false,
+          "evidence": "missing"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": true,
+          "evidence": "glossary section=True, ~25 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": true,
+          "evidence": "mermaid=2, table rows=189, code blocks=5 -> 3/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": false,
+          "evidence": "no self-review line in terminal_summary.md"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 12,
+        "failed": 0,
+        "total": 12,
+        "time_seconds": 404.2,
+        "tokens": 88993,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_jaxenv.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_jaxenv.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "56 file:line anchors (e.g. ['state.py:115', 'benchmark.py:122', 'env.py:15'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": true,
+          "evidence": "2620 bytes"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": true,
+          "evidence": "glossary section=True, ~18 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": true,
+          "evidence": "mermaid=1, table rows=137, code blocks=6 -> 3/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": true,
+          "evidence": "self-review line present"
+        },
+        {
+          "text": "Scope slug in the filename reflects the resolved scope (jaxenv/jax_env/jax)",
+          "passed": true,
+          "evidence": "matched ['jaxenv', 'jax']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "time_seconds": 531.5,
+        "tokens": 79785,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output document exists as a .md file",
+          "passed": true,
+          "evidence": "found: ['20260811_rulebase_case7.md']"
+        },
+        {
+          "text": "Filename matches the {yyyymmdd}_{scope}.md convention using today's date (20260811)",
+          "passed": true,
+          "evidence": "matching: ['20260811_rulebase_case7.md']"
+        },
+        {
+          "text": "Document contains all three analysis passes: directory tree, class/method inventory, processing steps",
+          "passed": true,
+          "evidence": "tree=True, inventory=True, steps=True"
+        },
+        {
+          "text": "Class/method inventory is a table including responsibility and input/output columns",
+          "passed": true,
+          "evidence": "found a table header with\u8cac\u52d9/responsibility + input columns"
+        },
+        {
+          "text": "Processing steps are numbered and cite specific file:line anchors",
+          "passed": true,
+          "evidence": "54 file:line anchors (e.g. ['tasks.py:376', 'observe.py:14', 'market.py:37'])"
+        },
+        {
+          "text": "Header block records scope paths, file/line counts, analysis date, and commit sha",
+          "passed": true,
+          "evidence": "scope=True, size=True, date=True, sha=True"
+        },
+        {
+          "text": "A separate terminal summary was produced (terminal_summary.md)",
+          "passed": true,
+          "evidence": "3198 bytes"
+        },
+        {
+          "text": "Document does not write into the repo's docs/ tree (no repo pollution)",
+          "passed": true,
+          "evidence": "repo docs/ clean"
+        },
+        {
+          "text": "Document opens with a \u7528\u8a9e (glossary) table defining identifiers and domain terms",
+          "passed": true,
+          "evidence": "glossary section=True, ~22 terms defined"
+        },
+        {
+          "text": "Uses at least 3 visual formats densely (tables, mermaid, skeleton code) rather than prose",
+          "passed": true,
+          "evidence": "mermaid=1, table rows=178, code blocks=7 -> 3/3 formats"
+        },
+        {
+          "text": "Terminal summary reports a self-review pass and what it changed",
+          "passed": true,
+          "evidence": "self-review line present"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "old_skill": {
+      "pass_rate": {
+        "mean": 0.7955,
+        "stddev": 0.0394,
+        "min": 0.75,
+        "max": 0.8182
+      },
+      "time_seconds": {
+        "mean": 413.2667,
+        "stddev": 251.7209,
+        "min": 264.4,
+        "max": 703.9
+      },
+      "tokens": {
+        "mean": 72466.6667,
+        "stddev": 3993.7222,
+        "min": 68168,
+        "max": 76062
+      }
+    },
+    "with_skill": {
+      "pass_rate": {
+        "mean": 0.9394,
+        "stddev": 0.105,
+        "min": 0.8182,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 311.9,
+        "stddev": 277.5113,
+        "min": 0.0,
+        "max": 531.5
+      },
+      "tokens": {
+        "mean": 56259.3333,
+        "stddev": 48939.0566,
+        "min": 0,
+        "max": 88993
+      }
+    },
+    "delta": {
+      "pass_rate": "-0.14",
+      "time_seconds": "+101.4",
+      "tokens": "+16207"
+    }
+  },
+  "notes": []
+}
