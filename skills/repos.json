@@ -58,6 +58,11 @@
         "code-review",
         "dvc",
         "eval-driven",
+        "experiment",
+        "experiment-analysis",
+        "experiment-execution",
+        "experiment-hypothesize",
+        "experiment-plan",
         "feature-plan",
         "find-skills",
         "instinct-evolve",
@@ -88,12 +93,7 @@
       ],
       "own": [
         "code-explain",
-        "code-explain-workspace",
-        "experiment",
-        "experiment-analysis",
-        "experiment-execution",
-        "experiment-hypothesize",
-        "experiment-plan"
+        "code-explain-workspace"
       ]
     },
     "ptcg": {
@@ -108,6 +108,11 @@
         "dvc",
         "e2e-fix",
         "eval-driven",
+        "experiment",
+        "experiment-analysis",
+        "experiment-execution",
+        "experiment-hypothesize",
+        "experiment-plan",
         "feature-plan",
         "find-skills",
         "instinct-evolve",
@@ -123,6 +128,7 @@
         "python-lint",
         "python-review",
         "python-tdd",
+        "python-to-jax",
         "release-tag-github",
         "remove-unused",
         "research-clustering",
@@ -141,12 +147,6 @@
         "web-design-guidelines"
       ],
       "own": [
-        "experiment",
-        "experiment-analysis",
-        "experiment-execution",
-        "experiment-hypothesize",
-        "experiment-plan",
-        "python-to-jax",
         "replay-viewer"
       ]
     },
@@ -194,15 +194,15 @@
       "path": "../05_reinforce",
       "shared": [
         "agent-creator",
-        "dvc"
+        "dvc",
+        "python-to-jax"
       ],
       "own": [
-        "experiment",
-        "experiment-analysis",
-        "experiment-execution",
-        "experiment-hypothesize",
-        "experiment-plan",
-        "python-to-jax"
+        "rl-experiment",
+        "rl-experiment-analysis",
+        "rl-experiment-execution",
+        "rl-experiment-hypothesize",
+        "rl-experiment-plan"
       ]
     }
   }
