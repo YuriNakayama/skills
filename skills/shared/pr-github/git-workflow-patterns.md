@@ -11,7 +11,7 @@ GitHub flow に基づく PR 作成・リリース管理。`main` が唯一の長
 ## Commands
 
 - `/pr` — PR 作成フロー（base は常に `main`）
-- `/release-tag` — `main` の任意コミットから semver タグを打ってリリースを切る
+- `/release-tag-github` — `main` の任意コミットから semver タグを打ってリリースを切る
 
 ## Branch Strategy
 
@@ -24,7 +24,7 @@ fix/<topic>      → main   # バグ修正・hotfix（緊急かどうかに関�
 
 ## Release Strategy
 
-`develop` / `release/*` といった長命ブランチは持たない。リリースが必要になったら `main` の任意のコミット（通常 HEAD）に直接タグを打つ。詳細は `release-tag` skill を参照。
+`develop` / `release/*` といった長命ブランチは持たない。リリースが必要になったら `main` の任意のコミット（通常 HEAD）に直接タグを打つ。詳細は `release-tag-github` skill を参照。
 
 ## Merge Style
 
@@ -34,5 +34,5 @@ fix/<topic>      → main   # バグ修正・hotfix（緊急かどうかに関�
 ## Conventions
 
 - PR は小さく 1 トピックに絞る。複数の関心が混ざっていたら分割する
-- レビュー前にローカルで CI 相当 (`dev/test-backend` 等) を通しておく
+- レビュー前にローカルで CI 相当（`ls dev/` にあるテスト用のスクリプト。例: `dev/test`、`dev/test-backend`）を通しておく
 - コミット・PR タイトル・本文はすべて日本語（リポジトリ規約）

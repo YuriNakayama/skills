@@ -45,8 +45,7 @@ DOC = """ハブ内の切れたパスと、配布できない絶対パスを検�
 # 件数が増えたら（新しい違反の混入）も減ったら（直したのに更新していない）もエラーにする。直し終えたら項目を消す。
 # 追加は skill-share の手順でユーザーの同意を得てから。この一覧の編集以外で検査を通すためにスクリプトを書き換えない。
 ALLOW = r"""
-skills/repos/*/dvc/SKILL.md                   9   # 絶対パス。skill-share で $MAIN を使う形に直し、統合する
-skills/repos/*/experiment-analysis/SKILL.md   4   # 同上
+skills/repos/*/experiment-analysis/SKILL.md   4   # 絶対パス。skill-share で $MAIN を使う形に直し、統合する
 """
 ALLOW_LABEL = 'src/path_check.py の ALLOW'
 SELF = 'src/path_check.py'      # 自分自身は abs の検査から外す（例示や正規表現を含むため）

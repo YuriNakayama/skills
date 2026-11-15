@@ -27,8 +27,11 @@
         "python-tdd",
         "release-tag",
         "remove-unused",
+        "research-clustering",
+        "research-gather",
         "research-gather-workspace",
         "research-prompt-builder",
+        "research-retrieval",
         "research-retrieval-workspace",
         "skill-creator",
         "skill-list",
@@ -43,10 +46,7 @@
         "web-design-guidelines"
       ],
       "own": [
-        "frontend-design",
-        "research-clustering",
-        "research-gather",
-        "research-retrieval"
+        "frontend-design"
       ]
     },
     "kaggriculture": {
@@ -54,7 +54,9 @@
       "shared": [
         "agent-creator",
         "checkpoint",
+        "ci-fix",
         "code-review",
+        "dvc",
         "eval-driven",
         "feature-plan",
         "find-skills",
@@ -66,7 +68,10 @@
         "orchestrate",
         "pdf",
         "plan",
+        "pr-github",
+        "python-lint",
         "python-review",
+        "python-tdd",
         "release-tag-github",
         "remove-unused",
         "research-clustering",
@@ -74,26 +79,21 @@
         "research-prompt-builder",
         "research-retrieval",
         "skill-creator",
+        "skill-list",
+        "tdd",
+        "test-coverage",
         "update-codemaps",
         "update-docs",
         "verify"
       ],
       "own": [
-        "ci-fix",
         "code-explain",
         "code-explain-workspace",
-        "dvc",
         "experiment",
         "experiment-analysis",
         "experiment-execution",
         "experiment-hypothesize",
-        "experiment-plan",
-        "pr",
-        "python-lint",
-        "python-tdd",
-        "skill-list",
-        "tdd",
-        "test-coverage"
+        "experiment-plan"
       ]
     },
     "ptcg": {
@@ -105,6 +105,7 @@
         "ci-fix",
         "code-review",
         "deploy",
+        "dvc",
         "e2e-fix",
         "eval-driven",
         "feature-plan",
@@ -118,6 +119,7 @@
         "pdf",
         "plan",
         "playwright",
+        "pr-github",
         "python-lint",
         "python-review",
         "python-tdd",
@@ -139,13 +141,11 @@
         "web-design-guidelines"
       ],
       "own": [
-        "dvc",
         "experiment",
         "experiment-analysis",
         "experiment-execution",
         "experiment-hypothesize",
         "experiment-plan",
-        "pr",
         "python-to-jax",
         "replay-viewer"
       ]
@@ -193,10 +193,10 @@
     "reinforce": {
       "path": "../05_reinforce",
       "shared": [
-        "agent-creator"
+        "agent-creator",
+        "dvc"
       ],
       "own": [
-        "dvc",
         "experiment",
         "experiment-analysis",
         "experiment-execution",

@@ -4,8 +4,9 @@ description: >
   open a PR, create a pull request, "PR を作って", merge feature work into main, or
   prepare changes for review. The skill walks through commit history checks, fills
   the repo's `.github/PULL_REQUEST_TEMPLATE.md`, picks an appropriate label, and
-  runs `gh pr create --base main`. It does not handle release tagging — for that
-  see the release-tag skill.
+  runs `gh pr create --base main`. For repos without a long-lived `develop` branch;
+  for git flow (feature → develop → release/* → main) use the pr skill instead.
+  It does not handle release tagging — for that see the release-tag-github skill.
 ---
 
 # PR Creation Flow (GitHub flow)
@@ -19,7 +20,7 @@ feature/<topic>  → main   # 新機能・改善
 fix/<topic>      → main   # バグ修正・hotfix（緊急かどうかは関係なく fix で統一）
 ```
 
-ブランチ名の命名は短く、目的が読み取れる単語にする（例: `feature/dvc-data-control`, `fix/replay-loser-obs-fields`）。 release / develop / hotfix といった長命ブランチは存在しない。リリースは `main` から直接タグを打って行う（`release-tag` skill を参照）。
+ブランチ名の命名は短く、目的が読み取れる単語にする（例: `feature/dvc-data-control`, `fix/replay-loser-obs-fields`）。 release / develop / hotfix といった長命ブランチは存在しない。リリースは `main` から直接タグを打って行う（`release-tag-github` skill を参照）。
 
 ## Steps
 
@@ -138,7 +139,7 @@ rm tmp-pull-request-template.tmp
 
 - マージ方式は **squash merge を既定** とする（main の履歴を線形に保つため）。リポジトリ設定で squash がデフォルトになっていればそれに従い、わざわざ override しない
 - PR は **小さく、1 トピック 1 PR** を心がける。複数の関心が混ざっていたらコミットを分けて 2 本に切る方が良い
-- レビュー前に `dev/test` 等の CI 相当チェックをローカルで通しておくと往復が減る
+- レビュー前に CI 相当のチェック（`ls dev/` にあるテスト用のスクリプト。例: `dev/test`、`dev/test-backend`、`dev/test-bot`）をローカルで通しておくと往復が減る
 - マージ済みの feature / fix ブランチは GitHub 側で削除して構わない（`gh pr merge --delete-branch` または UI から）
 
 ## Language

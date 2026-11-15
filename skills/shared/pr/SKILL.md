@@ -1,5 +1,5 @@
 ---
-description: Pull Request creation flow based on git flow
+description: Pull Request creation flow based on git flow (feature → develop → release/* → main). For GitHub flow repos that only have `main`, use pr-github instead.
 ---
 
 # PR Creation Flow

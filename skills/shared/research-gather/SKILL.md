@@ -15,11 +15,11 @@ When `$ARGUMENTS` contains `--auto`, run the entire workflow **non-interactively
 |-----------|--------------|
 | Resource Types | 学術論文 + 特許 |
 | Time Range | 直近4年 |
-| Collection Depth | 標準（各5〜10件） |
-| Domain Selection | すべてのクラスタ |
 | Next Action (Step 6) | 完了（自動終了） |
 
-In `--auto` mode, the remaining text in `$ARGUMENTS` (after removing `--auto`) is used as the input (file path or keywords). For example: `/research-gather --auto docs/research/clustering-result.md` → input is the clustering result file.
+Collection depth and domain selection are not parameters — every run collects the maximum number of resources across all clusters (see "Collection Scope" below).
+
+In `--auto` mode, the remaining text in `$ARGUMENTS` (after removing `--auto`) is used as the input (file path or keywords). For example: `/research-gather --auto research/runs/<domain>/clustering/latest/index.md` → input is the clustering result file.
 
 If `$ARGUMENTS` does NOT contain `--auto`, proceed with the normal interactive workflow below.
 
@@ -90,34 +90,53 @@ AskUserQuestion:
 
 If "カスタム" is selected, ask a follow-up for the specific year range.
 
-#### Hearing 3: Collection Depth
+### Step 2.5: Collection Scope (fixed — no hearing)
+
+Collection depth and cluster selection are NOT user choices. Every run uses the maximum scope:
+
+- **Depth**: at least 20 verified resources per domain × resource type. Treat 20 as a floor, not a target — if high-quality resources remain after 20, keep going. Stop only when additional searching stops surfacing new relevant resources, not when a count is reached.
+- **Clusters**: always collect for **every** cluster in the input. Never ask which clusters to target and never sample a subset.
+
+Note the interaction with Step 4's verification: the floor applies to resources that survive URL verification. If verification drops entries below 20 for a domain, search again to replace them.
+
+Never offer the user a faster, shallower option, and never stop early because the result set "looks like enough".
+
+## Report Quality Principles — Visual and Structural Expression
+
+Use figures, tables, formulas, structured lists, Mermaid diagrams, and ASCII art aggressively throughout the output. Prose is the fallback, not the default: whenever information has structure — a distribution, a trend, a relationship, a comparison — express that structure visually rather than describing it in sentences.
+
+The resource tables are the backbone of this skill's output, but a wall of tables is not a report. The analytical sections around them must be visual too.
+
+**Default representation by information shape:**
+
+| Information shape | Representation |
+|-------------------|----------------|
+| Resource lists | Markdown table (see the output template) |
+| Counts per domain / type / year | Table **and** an ASCII bar chart for the distribution |
+| Publication trend over time | ASCII bar chart or Mermaid `xychart-beta` |
+| Relationships between resources (citation, lineage, same group) | Mermaid `graph` diagram |
+| Domain coverage and gaps | Table with an explicit gap column, or a Mermaid diagram |
+| Enumerations (trends, observations, next steps) | Structured list — never a comma-separated sentence |
+| Ratios or coverage metrics | LaTeX formula (`$...$`) when a definition clarifies the number |
+
+**Specific requirements for this skill:**
+
+- **収集サマリ table (mandatory)** — Counts per domain × resource type, already in the template.
+- **Year distribution (mandatory)** — Show how resources spread across the target period, as an ASCII bar chart. A reader should see at a glance whether the field is accelerating.
+- **全体の傾向 section** — Lead with a visual (chart or diagram), then the prose. Never a bare paragraph.
+- **Resource relationship diagram** — When collected resources have visible relationships (a survey and the papers it covers, a patent family, papers from one group), show them as a Mermaid diagram.
+- **Coverage gaps** — When a domain yields notably fewer resources, make this visible in a table or chart rather than burying it in prose.
+
+Example of the year distribution chart:
 
 ```
-AskUserQuestion:
-  question: "各領域あたりの収集件数はどの程度にしますか？"
-  header: "収集件数"
-  multiSelect: false
-  options:
-    - label: "標準（各5〜10件）（推奨）"
-      description: "主要なリソースを網羅。バランスの良い量"
-    - label: "広範（各10〜20件）"
-      description: "できるだけ多くのリソースを収集。時間がかかる場合あり"
-    - label: "簡潔（各3〜5件）"
-      description: "代表的なリソースのみ。素早く概観を得たい場合"
+2026 |████████████ 12
+2025 |████████████████████ 20
+2024 |███████████ 11
+2023 |█████ 5
 ```
 
-#### Hearing 4: Domain Selection (clustering input only)
-
-If the input is from clustering and contains multiple clusters, ask which domains to investigate:
-
-```
-AskUserQuestion:
-  question: "どのクラスタのリソースを収集しますか？"
-  header: "対象クラスタ"
-  multiSelect: true
-  options:
-    (dynamically generated from cluster names — show up to 4; if more than 4 clusters, group or offer "すべて" as the first option)
-```
+**Mermaid syntax constraint**: output under `research/**` is rendered by the viewer and validated by `npm run check:docs` (mermaid parse check). Keep node labels free of unescaped `(`, `)`, `:`, and `,` — wrap such labels in quotes (`A["label (with parens)"]`). A diagram that fails to parse breaks CI.
 
 ### Step 3: Resource Collection
 
@@ -265,7 +284,7 @@ After verification, log the results:
 
 **Important**: It is better to have fewer verified entries than many unverified ones. Never include an entry in the output unless its URL has been verified. This prevents hallucinated or mismatched URL/title pairs from propagating to downstream tools (CSV lists, daily research pipeline).
 
-If verification reduces the result set below the requested collection depth, run additional searches to find replacement resources, then verify those as well.
+If verification reduces the result set for any domain below the Step 2.5 floor (20 verified resources per domain × resource type), run additional searches to find replacement resources, then verify those as well. Repeat until the floor is met or searching stops surfacing new relevant resources.
 
 ### Step 5: Output File Generation
 
@@ -304,9 +323,29 @@ Generate a **single Markdown file** containing all collected resources in table 
 
 {Below table includes only verified entries. All URLs have been confirmed via WebFetch.}
 
+## 年次分布
+
+{MANDATORY. ASCII bar chart of resource counts per year across the target period. Add a per-resource-type breakdown when multiple types were collected.}
+
+```
+2026 |████████████ 12
+2025 |████████████████████ 20
+2024 |███████████ 11
+2023 |█████ 5
+```
+
+## リソース関係図
+
+{Include when the collected resources have visible relationships — a survey and the papers it covers, a patent family, papers from the same group. Mermaid `graph` diagram. Omit only when no meaningful relationship exists across the collected set.}
+
 ## 全体の傾向
 
-{3–5 sentences: 収集結果から見える全体的な傾向、注目すべきポイント}
+{Lead with a visual, then the prose. Structure the observations as a list, not a paragraph:}
+
+- **{観点}**: {具体的な観察と裏付けとなる件数}
+- **{観点}**: {具体的な観察と裏付けとなる件数}
+
+{3–5 sentences of synthesis after the list — 収集結果から見える全体的な傾向、注目すべきポイント}
 
 ---
 
@@ -387,35 +426,41 @@ AskUserQuestion:
 
 ## Output Location
 
-**MUST READ FIRST**: Before deciding the output path, read `docs/research/README.md` (the single source of truth for the research directory layout) and `.claude/rules/research.md`.
+**MUST READ FIRST**: Before deciding the output path, read `research/README.md` (the single source of truth for the research directory layout) and `.claude/rules/research.md`.
 
 ### Path resolution
 
 1. Identify the **domain** (`<domain>`, `snake_case`):
-   - If the input is a clustering file under `docs/research/runs/<domain>/clustering/...`, use that `<domain>`.
+   - If the input is a clustering file under `research/runs/<domain>/clustering/...`, use that `<domain>`.
    - Otherwise infer from the research theme or ask the user.
 2. Identify the **cluster** (`<cluster>`):
    - From the clustering result section being processed (cluster ID like `metalearner` / `nl2sql-nl2code`).
    - If gathering across all clusters / no cluster context, use `all`.
-3. If `docs/research/domains/<domain>/domain.yaml` defines `output_paths.gather`, use it.
-4. Otherwise use the default path:
+3. If `research/domains/<domain>/domain.yaml` defines `output_paths.gather`, use it.
+4. Otherwise use the default path — a **date directory** with a **cluster subdirectory**:
 
    ```
-   docs/research/runs/<domain>/gather/<YYYYMMDD>_<cluster>/
+   research/runs/<domain>/gather/<YYYYMMDD>/<cluster>/
    ```
 
    - Filename: `resources-<topic-slug>.md` inside this directory.
-5. **Never write directly under `docs/research/domains/<domain>/resources/`** — that layer is symlinks.
+   - Multiple clusters gathered on the same day share one `<YYYYMMDD>/` directory, each in its own `<cluster>/` subdirectory.
+5. **Never write directly under `research/domains/<domain>/resources/`** — that layer is symlinks.
 6. **Never overwrite previous gather runs** — append-only.
 
 ### After writing
 
-Update the latest pointer:
+Update the phase-level `latest` pointer (one per phase, pointing at the newest date directory) and the `domains/` view symlink for this cluster:
 
 ```bash
-ln -snf <YYYYMMDD>_<cluster> docs/research/runs/<domain>/gather/latest_<cluster>
-ln -snf ../../../runs/<domain>/gather/latest_<cluster> docs/research/domains/<domain>/resources/<cluster>
+# phase-level latest -> newest date directory
+ln -snf <YYYYMMDD> research/runs/<domain>/gather/latest
+
+# domains/ view: point this cluster at its newest date directory
+ln -snf ../../../runs/<domain>/gather/<YYYYMMDD>/<cluster> research/domains/<domain>/resources/<cluster>
 ```
+
+There is no per-cluster `latest_<cluster>` pointer — clusters are represented as subdirectories under the date directory.
 
 ## Parallel Processing
 
