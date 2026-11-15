@@ -46,8 +46,8 @@ def mirror(src, dst, check):
     return changes
 
 def manifest_text(names):
-    return ('# Managed by the skills hub (~/project/skills). Do not edit these skills here.\n'
-            '# Edit the hub copy and run: ~/project/skills/bin/sync.py\n' + ''.join(n + '\n' for n in names))
+    return ('# Managed by the skills hub (~/project/98_skills). Do not edit these skills here.\n'
+            '# Edit the hub copy and run: ~/project/98_skills/bin/sync.py\n' + ''.join(n + '\n' for n in names))
 
 def sync_dir(target, sources, check, label):
     drift = []

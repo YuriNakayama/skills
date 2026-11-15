@@ -23,9 +23,12 @@ Double-sided output is done in two passes: fronts (odd pages), user reloads pape
 1. **Get the PDF** into the scratchpad (its own directory):
    `curl -sL -o <dir>/x.pdf <url>` ; check with `pdfinfo` (page count).
 2. **Resolve the page range.**
-   - Papers: by default the user wants **body only**. Skip references and appendices.
-     Find the `References` heading page with `pdftotext -f N -l N -layout`; keep that page if body text is on it.
+   - Papers: find where references and appendices start.
+     Find the `References` heading page with `pdftotext -f N -l N -layout`; the page is body if body text is on it.
      Check whether an appendix (`A  <Title>`) follows the references.
+     **Before printing, ask the user** with AskUserQuestion whether to print references and appendices.
+     Show a table (paper | body pages | references pages | appendix pages | sheets with / without).
+     Options: 本文のみ (recommended), 本文＋付録, すべて. Do not send any job until answered.
    - If the user gives book/printed page numbers or section numbers, compute the PDF-page offset:
      `pdftotext -f N -l N -layout x.pdf - | grep -oE '(^| )[0-9]{3}( |$)'` to read the printed number on PDF page N,
      and grep for `§` / section headers to find section boundaries. Report a table
@@ -43,8 +46,9 @@ Double-sided output is done in two passes: fronts (odd pages), user reloads pape
      Never leave this judgment to the user.
    Wait for 「セットした」.
 6. **Pass 2 – backs** (even pages, **reverse order**, because the top sheet = last front is fed first):
-   `lp -d EPSON_EP_M552T_Series -o ColorModel=Gray -o cupsPrintQuality=High -P <explicit list, e.g. 22,20,…,2> file.pdf`
-   Use an explicit descending `-P` list; check with `lpstat -o` first.
+   `lp -d EPSON_EP_M552T_Series -o ColorModel=Gray -o cupsPrintQuality=High -o outputorder=reverse -P <range> -o page-set=even file.pdf`
+   CUPS always prints `-P` pages in document order, so a descending `-P` list does NOT reverse. Use `-o outputorder=reverse`.
+   Check with `lpstat -o` first.
 7. Report which pages are now paired and any sheet left with a blank back.
 
 ## Response style the user expects

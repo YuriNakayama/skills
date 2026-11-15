@@ -1,7 +1,7 @@
 {
   "repos": {
     "research": {
-      "path": "../research",
+      "path": "../02_research",
       "shared": [
         "agent-browser",
         "checkpoint",
@@ -51,7 +51,7 @@
       "codex": false
     },
     "ai-reception": {
-      "path": "../ai-reception",
+      "path": "../00_old/ai-reception",
       "shared": [
         "agent-browser",
         "checkpoint",
@@ -100,7 +100,7 @@
       "codex": false
     },
     "realtime": {
-      "path": "../realtime",
+      "path": "../00_old/realtime",
       "shared": [
         "agent-browser",
         "checkpoint",
@@ -148,7 +148,7 @@
       "codex": false
     },
     "kaggriculture": {
-      "path": "../kaggriculture",
+      "path": "../01_kaggle/kaggriculture",
       "shared": [
         "checkpoint",
         "code-review",
@@ -196,7 +196,7 @@
       "codex": false
     },
     "ptcg": {
-      "path": "../ptcg",
+      "path": "../01_kaggle/ptcg",
       "shared": [
         "agent-browser",
         "checkpoint",
@@ -308,7 +308,7 @@
       "codex": true
     },
     "reinforce": {
-      "path": "../reinforce",
+      "path": "../05_reinforce",
       "shared": [],
       "own": [
         "agent-creator",
