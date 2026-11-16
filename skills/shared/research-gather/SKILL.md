@@ -445,22 +445,45 @@ AskUserQuestion:
 
    - Filename: `resources-<topic-slug>.md` inside this directory.
    - Multiple clusters gathered on the same day share one `<YYYYMMDD>/` directory, each in its own `<cluster>/` subdirectory.
-5. **Never write directly under `research/domains/<domain>/resources/`** — that layer is symlinks.
+5. **Never write directly under `research/domains/<domain>/resources/`** — that layer is symlinks. Real files under `research/domains/<domain>/` (`domain.yaml`, `README.md`, `studies/`, `discussions/`) are the human-authored layer: read `domain.yaml`, but never create or modify the others from this skill.
 6. **Never overwrite previous gather runs** — append-only.
 
 ### After writing
 
-Update the phase-level `latest` pointer (one per phase, pointing at the newest date directory) and the `domains/` view symlink for this cluster:
+Update the phase-level `latest` pointer, then regenerate the `domains/` view:
 
 ```bash
 # phase-level latest -> newest date directory
 ln -snf <YYYYMMDD> research/runs/<domain>/gather/latest
 
-# domains/ view: point this cluster at its newest date directory
-ln -snf ../../../runs/<domain>/gather/<YYYYMMDD>/<cluster> research/domains/<domain>/resources/<cluster>
+# domains/ browsing view: rebuilt from runs/ for every domain (idempotent)
+dev/sync-domain-links
 ```
 
 There is no per-cluster `latest_<cluster>` pointer — clusters are represented as subdirectories under the date directory.
+
+Do not hand-write links under `domains/`: `dev/sync-domain-links` derives them from
+`runs/`, pointing each cluster at the newest date directory that contains it. Note the
+viewer does not read those links at all — it derives the same view from `runs/` at request
+time — so they are a browsing convenience and a stale link never breaks the site.
+
+**New domain → create `domain.yaml`.** Every domain must have
+`research/domains/<domain>/domain.yaml` (`dev/research-admin check` fails without it, and CI
+runs that check). If this run created a new domain, create the file with only these keys:
+
+```yaml
+domain: <domain>                 # must equal the folder name
+display_name: <short human-readable name>
+tags: []
+```
+
+Leave `tags` empty: tags are assigned later from the whole domain by the
+`research-housekeeping` skill, and only ids defined in `research/_meta/tags.yaml` are allowed.
+Do not otherwise edit an existing `domain.yaml` from this skill. Finally confirm:
+
+```bash
+dev/research-admin check   # must report 0 error(s)
+```
 
 ## Parallel Processing
 
